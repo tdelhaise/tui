@@ -1,0 +1,4 @@
+module CNcurses [system] {
+	header "include/CNcurses_shim.h"
+	export *
+}
