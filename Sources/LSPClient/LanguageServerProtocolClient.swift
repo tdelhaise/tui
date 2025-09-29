@@ -84,7 +84,7 @@ public actor LanguageServerProtocolClient {
     private func handleMessageData(_ data: Data) async {
         // For now, just log
         if let s = String(data: data, encoding: .utf8) {
-            fputs("[LSP <-] \(s)\n", stderr)
+            // fputs("[LSP <-] \(s)\n", stderr)
         }
     }
 
@@ -96,6 +96,6 @@ public actor LanguageServerProtocolClient {
         let headerData = header.data(using: .utf8)!
         stdinPipe.fileHandleForWriting.write(headerData)
         stdinPipe.fileHandleForWriting.write(data)
-        stdinPipe.fileHandleForWriting.synchronizeFile()
+        // stdinPipe.fileHandleForWriting.synchronizeFile()
     }
 }

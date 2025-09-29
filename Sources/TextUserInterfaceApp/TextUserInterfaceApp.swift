@@ -63,15 +63,15 @@ public final class TextUserInterfaceApp {
 			refresh()
 			let ch = getch()
 			switch Int32(ch) {
-			case 27, 113: running = false                // ESC/q
-			case KEY_UP:   if var b = self.buffer { b.moveCursor(dRow: -1, dCol: 0); self.buffer = b }
-			case KEY_DOWN: if var b = self.buffer { b.moveCursor(dRow:  1, dCol: 0); self.buffer = b }
-			case KEY_LEFT: if var b = self.buffer { b.moveCursor(dRow:  0, dCol: -1); self.buffer = b }
-			case KEY_RIGHT: if var b = self.buffer { b.moveCursor(dRow:  0, dCol:  1); self.buffer = b }
-			case KEY_NPAGE: if var b = self.buffer { b.pageScroll(page: +1, viewRows: Int(editorRows)); self.buffer = b }
-			case KEY_PPAGE: if var b = self.buffer { b.pageScroll(page: -1, viewRows: Int(editorRows)); self.buffer = b }
-			case 100: diagHeight = (diagHeight == 0) ? 8 : 0   // 'd'
-			default: break
+				case 27, 113: running = false                // ESC/q
+				case KEY_UP:   if var b = self.buffer { b.moveCursor(dRow: -1, dCol: 0); self.buffer = b }
+				case KEY_DOWN: if var b = self.buffer { b.moveCursor(dRow:  1, dCol: 0); self.buffer = b }
+				case KEY_LEFT: if var b = self.buffer { b.moveCursor(dRow:  0, dCol: -1); self.buffer = b }
+				case KEY_RIGHT: if var b = self.buffer { b.moveCursor(dRow:  0, dCol:  1); self.buffer = b }
+				case KEY_NPAGE: if var b = self.buffer { b.pageScroll(page: +1, viewRows: Int(editorRows)); self.buffer = b }
+				case KEY_PPAGE: if var b = self.buffer { b.pageScroll(page: -1, viewRows: Int(editorRows)); self.buffer = b }
+				case 100: diagHeight = (diagHeight == 0) ? 8 : 0   // 'd'
+				default: break
 			}
 			
 			put(rows - 2, 2, "key: \(ch)     ")
@@ -125,7 +125,9 @@ public final class TextUserInterfaceApp {
 			let line = "\(severity) L\(diagnostic.line+1):\(diagnostic.column+1) \(diagnostic.message)"
 			put(r, 1, TextWidth.clip(line, max: Int(width) - 2))
 			r += 1
-			if r >= top + height { break }
+			if r >= top + height {
+				break
+			}
 		}
 	}
 	
