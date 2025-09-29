@@ -14,21 +14,26 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],
     targets: [
-        // System library for ncurses (wide-character). We use a shim header to choose the right include per-OS.
-        .systemLibrary(
-            name: "CNcurses",
-            providers: [
-                .apt(["libncursesw5-dev"]), // Ubuntu/Debian
-                .brew(["ncurses"])          // macOS via Homebrew (though Xcode SDK also ships one)
-            ],
-        ),
+		.target(
+			name: "CNcursesShims",
+			path: "Sources/CNcursesShims",
+			publicHeadersPath: "include",
+			linkerSettings: [
+				// macOS
+				.linkedLibrary("ncurses", .when(platforms: [.macOS])),
+				// Linux (Ubuntu 24.04)
+				.linkedLibrary("ncursesw", .when(platforms: [.linux]))
+			]
+		),
         .target(
             name: "Utilities",
             dependencies: [],
+			path: "Sources/Utilities"
         ),
         .target(
             name: "TextUserInterfaceApp",
-			dependencies: ["CNcurses", "Utilities", "Editors", "Workspace" ],
+			dependencies: ["CNcursesShims", "Utilities", "Editors", "Workspace" ],
+			path: "Sources/TextUserInterfaceApp"
         ),
         .target(
             name: "LSPClient",
@@ -38,14 +43,17 @@ let package = Package(
                 .product(name: "NIOFoundationCompat", package: "swift-nio"),
                 "Utilities"
             ],
+			path: "Sources/LSPClient"
         ),
         .target(
             name: "Workspace",
             dependencies: ["Utilities"],
+			path: "Sources/Workspace"
         ),
         .target(
             name: "Editors",
             dependencies: ["Utilities"],
+			path: "Sources/Editors"
         ),
         .executableTarget(
             name: "App",

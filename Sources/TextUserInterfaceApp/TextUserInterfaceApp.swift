@@ -1,5 +1,5 @@
 import Foundation
-import CNcurses
+import CNcursesShims
 import Utilities
 import Workspace
 import Editors
