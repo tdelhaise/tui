@@ -1,22 +1,31 @@
 import Foundation
 import CNcurses
 import Utilities
-import Editors
 import Workspace
+import Editors
+
 
 public protocol DiagnosticsProvider: AnyObject {
 	func currentDiagnostics() -> [Diagnostic]
 }
 
 @MainActor
-public final class TUIApp {
+public final class TextUserInterfaceApp {
+	
+	private var buffer: EditorBuffer?      // ⬅️ conserver l’état
+	// éventuellement:
+	private weak var diagsProvider: DiagnosticsProvider?
+	
 	public init() {}
 	
 	public func run(buffer: EditorBuffer?, diagsProvider: DiagnosticsProvider?) {
+		self.buffer = buffer
+		self.diagsProvider = diagsProvider
+		
 		initscr()
 		defer { endwin() }
 		raw()
-		tui_keypad_enable() // wrapper -> pas d’accès direct à stdscr
+		tui_keypad_stdscr(true) // wrapper C : on active keypad(stdscr, TRUE)
 		noecho()
 		setlocale(LC_ALL, "")
 		
@@ -55,12 +64,12 @@ public final class TUIApp {
 			let ch = getch()
 			switch Int32(ch) {
 			case 27, 113: running = false                // ESC/q
-			case KEY_UP:   buffer?.moveCursor(dRow: -1, dCol: 0)
-			case KEY_DOWN: buffer?.moveCursor(dRow:  1, dCol: 0)
-			case KEY_LEFT: buffer?.moveCursor(dRow:  0, dCol: -1)
-			case KEY_RIGHT:buffer?.moveCursor(dRow:  0, dCol:  1)
-			case KEY_NPAGE: if let b = buffer { b.pageScroll(page: +1, viewRows: Int(editorRows)) }
-			case KEY_PPAGE: if let b = buffer { b.pageScroll(page: -1, viewRows: Int(editorRows)) }
+			case KEY_UP:   if var b = self.buffer { b.moveCursor(dRow: -1, dCol: 0); self.buffer = b }
+			case KEY_DOWN: if var b = self.buffer { b.moveCursor(dRow:  1, dCol: 0); self.buffer = b }
+			case KEY_LEFT: if var b = self.buffer { b.moveCursor(dRow:  0, dCol: -1); self.buffer = b }
+			case KEY_RIGHT: if var b = self.buffer { b.moveCursor(dRow:  0, dCol:  1); self.buffer = b }
+			case KEY_NPAGE: if var b = self.buffer { b.pageScroll(page: +1, viewRows: Int(editorRows)); self.buffer = b }
+			case KEY_PPAGE: if var b = self.buffer { b.pageScroll(page: -1, viewRows: Int(editorRows)); self.buffer = b }
 			case 100: diagHeight = (diagHeight == 0) ? 8 : 0   // 'd'
 			default: break
 			}
@@ -77,37 +86,43 @@ public final class TUIApp {
 	}
 	
 	private func renderEditor(buf: EditorBuffer, top: Int32, height: Int32, width: Int32) {
-		if buf.cursorRow < buf.scrollRow { buf.scrollRow = buf.cursorRow }
-		let bottomVisible = Int(buf.scrollRow) + Int(height) - 1
-		if buf.cursorRow > bottomVisible { buf.scrollRow = max(0, buf.cursorRow - Int(height) + 1) }
+		var scrollRow = buf.scrollRow
+
+		if buf.cursorRow < scrollRow {
+			scrollRow = buf.cursorRow
+		}
+		let bottomVisible = Int(scrollRow) + Int(height) - 1
+		if buf.cursorRow > bottomVisible {
+			scrollRow = max(0, buf.cursorRow - Int(height) + 1)
+		}
 		
-		let maxLine = min(buf.lines.count, Int(buf.scrollRow) + Int(height))
+		let maxLine = min(buf.lines.count, Int(scrollRow) + Int(height))
 		var screenRow = top
-		for i in Int(buf.scrollRow)..<maxLine {
+		for i in Int(scrollRow)..<maxLine {
 			let line = TextWidth.clip(buf.lines[i], max: Int(width) - 1)
 			put(screenRow, 0, line)
 			screenRow += 1
 		}
 		
-		let cursorScrRow = top + Int32(buf.cursorRow - buf.scrollRow)
+		let cursorScrRow = top + Int32(buf.cursorRow - scrollRow)
 		let cursorScrCol = Int32(min(buf.cursorCol, Int(width) - 1))
 		move(cursorScrRow, cursorScrCol)
 	}
 	
 	private func drawDiagnostics(provider: DiagnosticsProvider, top: Int32, height: Int32, width: Int32) {
 		mvhline(top - 1, 0, 0, width)
-		let diags = provider.currentDiagnostics().prefix(Int(height))
+		let diagnostics = provider.currentDiagnostics().prefix(Int(height))
 		var r = top
-		for d in diags {
-			let sev: String
-			switch d.severity {
-			case .error: sev = "E"
-			case .warning: sev = "W"
-			case .information: sev = "I"
-			case .hint: sev = "H"
-			case .unknown: sev = "?"
+		for diagnostic in diagnostics {
+			let severity: String
+			switch diagnostic.severity {
+				case .error: severity = "E"
+				case .warning: severity = "W"
+				case .hint: severity = "H"
+				case .unknown: severity = "?"
+				case .info: severity = "I"
 			}
-			let line = "\(sev) L\(d.line+1):\(d.character+1) \(d.message)"
+			let line = "\(severity) L\(diagnostic.line+1):\(diagnostic.column+1) \(diagnostic.message)"
 			put(r, 1, TextWidth.clip(line, max: Int(width) - 2))
 			r += 1
 			if r >= top + height { break }
@@ -116,8 +131,8 @@ public final class TUIApp {
 	
 	private func drawHeader(title: String) {
 		// Équivalent des anciens mvprintw(...)
-		put(1, max(0, (COLS - Int32(title.count)) / 2), title)
-		mvhline(2, 0, 0, COLS)
+		put(1, max(0, ((Int32(tui_cols()) - Int32(title.count)) / 2)), title)
+		mvhline(2, 0, 0, (Int32(tui_cols())))
 		put(4, 2, "Hello from ncurses!")
 		put(6, 2, "• Mouse/keys enabled")
 		put(7, 2, "• UTF-8 locale set (if terminal supports it)")

@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "tui",
     platforms: [
-        .macOS(.v13), // macOS 13+ (Ventura) to align with modern Swift toolchains
+        .macOS(.v15), // macOS 15+ to align with modern Swift toolchains
     ],
     products: [
         .executable(name: "tui", targets: ["App"]),
@@ -20,15 +20,15 @@ let package = Package(
             providers: [
                 .apt(["libncursesw5-dev"]), // Ubuntu/Debian
                 .brew(["ncurses"])          // macOS via Homebrew (though Xcode SDK also ships one)
-            ]
+            ],
         ),
         .target(
             name: "Utilities",
-            dependencies: []
+            dependencies: [],
         ),
         .target(
-            name: "TUI",
-			dependencies: ["CNcurses", "Utilities", "Editors", "Workspace" ]
+            name: "TextUserInterfaceApp",
+			dependencies: ["CNcurses", "Utilities", "Editors", "Workspace" ],
         ),
         .target(
             name: "LSPClient",
@@ -37,20 +37,20 @@ let package = Package(
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOFoundationCompat", package: "swift-nio"),
                 "Utilities"
-            ]
+            ],
         ),
         .target(
             name: "Workspace",
-            dependencies: ["Utilities"]
+            dependencies: ["Utilities"],
         ),
         .target(
             name: "Editors",
-            dependencies: ["Utilities"]
+            dependencies: ["Utilities"],
         ),
         .executableTarget(
             name: "App",
             dependencies: [
-                "TUI",
+                "TextUserInterfaceApp",
                 "LSPClient",
                 "Workspace",
                 "Editors",

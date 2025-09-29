@@ -16,15 +16,15 @@ extern "C" {
 #endif
 
 // Wrappers évitant toute référence directe à des globals C côté Swift.
-static inline void tui_keypad_enable(void) { keypad(stdscr, TRUE); }
-static inline int  tui_cols(void) { return COLS; }
-static inline int  tui_lines(void) { return LINES; }
+static void tui_keypad_enable(void);
+static int tui_cols(void);
+static int tui_lines(void);
 
 // Helpers d’E/S non-variadiques si besoin
-static inline void tui_move(int y, int x) { move(y, x); }
-static inline void tui_addstr(const char* s) { addstr(s); }
+static void tui_move(int y, int x);
+static void tui_addstr(const char* s);
 // Nouveau wrapper pour éviter d'exposer `stdscr` à Swift
-void tui_keypad_stdscr(bool enable);
+static void tui_keypad_stdscr(bool enable);
 
 #ifdef __cplusplus
 }
