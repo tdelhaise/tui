@@ -15,7 +15,8 @@ public final class TextUserInterfaceApp {
 	private var buffer: EditorBuffer?      // ⬅️ conserver l’état
 	// éventuellement:
 	private weak var diagsProvider: DiagnosticsProvider?
-	
+	private var statusMessage: String = ""
+
 	public init() {}
 	
 	public func run(buffer: EditorBuffer?, diagsProvider: DiagnosticsProvider?) {
@@ -46,7 +47,7 @@ public final class TextUserInterfaceApp {
 				editorRows = max(5, rows - diagHeight - 2)
 			}
 			
-			put(0, 0, "tui — q/ESC:quit  arrows:move  PgUp/PgDn:scroll  d:toggle-diagnostics")
+			put(0, 0, "tui — q/ESC:quit  arrows:move  Shift+arrows:select  Home/End  PgUp/PgDn  v:select  y:copy  x:cut  p:paste  d:diag")
 			mvhline(1, 0, 0, cols)
 			
 			if let buf = buffer {
@@ -62,23 +63,152 @@ public final class TextUserInterfaceApp {
 			
 			refresh()
 			let ch = getch()
-			switch Int32(ch) {
-				case 27, 113: running = false                // ESC/q
-				case KEY_UP:   if var b = self.buffer { b.moveCursor(dRow: -1, dCol: 0); self.buffer = b }
-				case KEY_DOWN: if var b = self.buffer { b.moveCursor(dRow:  1, dCol: 0); self.buffer = b }
-				case KEY_LEFT: if var b = self.buffer { b.moveCursor(dRow:  0, dCol: -1); self.buffer = b }
-				case KEY_RIGHT: if var b = self.buffer { b.moveCursor(dRow:  0, dCol:  1); self.buffer = b }
-				case KEY_NPAGE: if var b = self.buffer { b.pageScroll(page: +1, viewRows: Int(editorRows)); self.buffer = b }
-				case KEY_PPAGE: if var b = self.buffer { b.pageScroll(page: -1, viewRows: Int(editorRows)); self.buffer = b }
-				case 100: diagHeight = (diagHeight == 0) ? 8 : 0   // 'd'
-				default: break
+			let key = Int32(ch)
+
+			switch key {
+			case 27, 113:
+				running = false
+			case KEY_UP:
+				mutateBuffer { buffer in
+					buffer.moveCursor(dRow: -1, dCol: 0)
+					return nil
+				}
+			case KEY_DOWN:
+				mutateBuffer { buffer in
+					buffer.moveCursor(dRow: 1, dCol: 0)
+					return nil
+				}
+			case KEY_LEFT:
+				mutateBuffer { buffer in
+					buffer.moveCursor(dRow: 0, dCol: -1)
+					return nil
+				}
+			case KEY_RIGHT:
+				mutateBuffer { buffer in
+					buffer.moveCursor(dRow: 0, dCol: 1)
+					return nil
+				}
+			case KEY_SLEFT:
+				mutateBuffer { buffer in
+					buffer.moveCursor(dRow: 0, dCol: -1, selecting: true)
+					return nil
+				}
+			case KEY_SRIGHT:
+				mutateBuffer { buffer in
+					buffer.moveCursor(dRow: 0, dCol: 1, selecting: true)
+					return nil
+				}
+			case KEY_HOME:
+				mutateBuffer { buffer in
+					buffer.moveToLineStart()
+					return nil
+				}
+			case KEY_END:
+				mutateBuffer { buffer in
+					buffer.moveToLineEnd()
+					return nil
+				}
+			case KEY_SHOME:
+				mutateBuffer { buffer in
+					buffer.moveToLineStart(selecting: true)
+					return nil
+				}
+			case KEY_SEND:
+				mutateBuffer { buffer in
+					buffer.moveToLineEnd(selecting: true)
+					return nil
+				}
+			case KEY_NPAGE:
+				mutateBuffer { buffer in
+					buffer.pageScroll(page: +1, viewRows: Int(editorRows))
+					return nil
+				}
+			case KEY_PPAGE:
+				mutateBuffer { buffer in
+					buffer.pageScroll(page: -1, viewRows: Int(editorRows))
+					return nil
+				}
+			case 118, 86:
+				mutateBuffer { buffer in
+					if buffer.hasSelection {
+						buffer.clearSelection()
+						return "Selection cleared"
+					} else {
+						buffer.beginSelection()
+						return "Selection anchor set"
+					}
+				}
+			case 121, 89:
+				mutateBuffer { buffer in
+					guard let copied = buffer.copySelection(), !copied.isEmpty else { return "No selection to copy" }
+					let preview = summarize(copied)
+					notify(title: "Selection Copied", message: preview, kind: .info, metadata: ["length": String(copied.count)])
+					return "Copied \\(copied.count) chars"
+				}
+			case 120, 88:
+				mutateBuffer { buffer in
+					guard let copied = buffer.copySelection(), !copied.isEmpty else { return "No selection to cut" }
+					_ = buffer.deleteSelection()
+					let preview = summarize(copied)
+					notify(title: "Selection Cut", message: preview, kind: .warning, metadata: ["length": String(copied.count)])
+					return "Cut \\(copied.count) chars"
+				}
+			case 112, 80:
+				mutateBuffer { buffer in
+					guard !buffer.clipboard.isEmpty else { return "Clipboard empty" }
+					buffer.pasteClipboard()
+					notify(title: "Clipboard Pasted", message: summarize(buffer.clipboard), kind: .success, metadata: ["length": String(buffer.clipboard.count)])
+					return "Pasted \\(buffer.clipboard.count) chars"
+				}
+			case 100:
+				diagHeight = (diagHeight == 0) ? 8 : 0
+			default:
+				break
 			}
-			
-			put(rows - 2, 2, "key: \(ch)     ")
-			put(rows - 1, 2, "Press 'q' or ESC to quit.")
+
+			let keyInfo = "key: \(ch)"
+			putCleared(rows - 2, 2, keyInfo)
+			var footer = "q/ESC to quit"
+			if let buf = buffer {
+				footer = "pos \(buf.cursorRow + 1):\(buf.cursorCol + 1)"
+				if let selectionLength = buf.selectionLength() {
+					footer += "  sel=\(selectionLength)"
+				}
+				footer += "  q/ESC to quit"
+			}
+			if !statusMessage.isEmpty {
+				footer += "  " + statusMessage
+			}
+			putCleared(rows - 1, 2, footer)
+			statusMessage = ""
 		}
 	}
 	
+	private func mutateBuffer(_ body: (inout EditorBuffer) -> String?) {
+		guard var buf = buffer else { return }
+		let message = body(&buf)
+		buffer = buf
+		if let message {
+			statusMessage = message
+		}
+	}
+
+	private func notify(title: String, message: String, kind: NotificationPayload.Kind, metadata: [String: String] = [:]) {
+		NotificationServices.shared().post(.init(title: title, message: message, kind: kind, metadata: metadata))
+	}
+
+	private func summarize(_ text: String, limit: Int = 64) -> String {
+		if text.count <= limit { return text }
+		let prefix = text.prefix(limit)
+		return String(prefix) + "..."
+	}
+
+	private func putCleared(_ y: Int32, _ x: Int32, _ s: String) {
+		move(y, x)
+		clrtoeol()
+		put(y, x, s)
+	}
+
 	// Helpers non-variadiques
 	private func put(_ y: Int32, _ x: Int32, _ s: String) {
 		move(y, x)

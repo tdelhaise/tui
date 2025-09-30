@@ -174,6 +174,23 @@ public struct EditorBuffer: Sendable {
 		return segments.joined(separator: "\n")
 	}
 	
+	public func selectionLength() -> Int? {
+		guard let selection, hasSelection else { return nil }
+		let (start, end) = selection.normalized
+		if start.row == end.row {
+			return end.column - start.column
+		}
+		var length = lines[start.row].count - start.column
+		if end.row - start.row > 1 {
+			for row in (start.row + 1)..<end.row {
+				length += lines[row].count
+			}
+		}
+		length += end.column
+		length += (end.row - start.row)
+		return length
+	}
+	
 	// MARK: - Private helpers
 	
 	private mutating func updateSelection(from previous: Cursor, selecting: Bool) {
