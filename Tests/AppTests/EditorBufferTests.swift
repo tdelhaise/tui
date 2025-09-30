@@ -73,4 +73,22 @@ final class EditorBufferTests: XCTestCase {
 		buffer.insert("\nqux")
 		XCTAssertEqual(buffer.lines[2], "qux")
 	}
+
+	func testSelectionLengthHandlesUnicodeGraphemes() {
+		var buffer = EditorBuffer(lines: ["🙂 café", "東京 station"])
+		buffer.moveToBufferStart()
+		buffer.beginSelection()
+		buffer.moveToNextWord(selecting: true)
+		XCTAssertEqual(buffer.selectionLength(), 1)
+		buffer.moveToNextWord(selecting: true)
+		XCTAssertEqual(buffer.selectionLength(), 2)
+		buffer.moveToNextWord(selecting: true)
+		XCTAssertEqual(buffer.selectionLength(), "🙂 café".count)
+		buffer.moveCursorTo(row: 1, column: 0, selecting: true)
+		buffer.moveToNextWord(selecting: true)
+		let expected = "🙂 café\n東京".count
+		XCTAssertEqual(buffer.selectionLength(), expected)
+		let copied = buffer.copySelection()
+		XCTAssertEqual(copied, "🙂 café\n東京")
+	}
 }

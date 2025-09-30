@@ -25,9 +25,9 @@ public final class TextUserInterfaceApp {
 		
 		initscr()
 		defer { endwin() }
-		raw()
-		tui_keypad_stdscr(true) // wrapper C : on active keypad(stdscr, TRUE)
-		noecho()
+		raw() // capture aussi Ctrl+C, Ctrl+Z, etc.
+		tui_keypad_stdscr(true) // wrapper C : on active keypad(stdscr, TRUE), active les KEY_*
+		noecho() // n’affiche pas automatiquement les touches
 		setlocale(LC_ALL, "")
 		
 #if os(Linux)
@@ -64,6 +64,8 @@ public final class TextUserInterfaceApp {
 			refresh()
 			let ch = getch()
 			let key = Int32(ch)
+			let hexString = String(format:"%08X", key)
+			Log.info("key: \(hexString)\n\r")
 
 			switch key {
 			case 27, 113:

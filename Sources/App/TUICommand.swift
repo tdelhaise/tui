@@ -19,7 +19,10 @@ struct TUICommand: AsyncParsableCommand {
 	var sourcekit: String = "/usr/bin/sourcekit-lsp"
 	
 	public mutating func run() async throws {
-		Log.info("PATH=\(Env.path().joined(separator: ":"))")
+		Log.info("PATH       = \(Env.path().joined(separator: ":"))")
+		Log.info("fileToOpen = \(fileToOpen ?? "NONE")")
+		Log.info("clangd     = \(clangd)")
+		Log.info("sourcekit  = \(sourcekit)")
 		let textUserInterfaceApp = TextUserInterfaceApp()
 		
 		/*
