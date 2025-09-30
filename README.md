@@ -21,3 +21,4 @@ If linking fails for ncurses on Linux, ensure the `libncursesw5-dev` package is 
 
 - TUI is a minimal ncurses loop with key handling. Press `q` to quit.
 - LSPClient streams stdio to/from `clangd` (when found) and logs JSON-RPC messages.
+- See `AGENTS.md` for full contributor guidelines.
