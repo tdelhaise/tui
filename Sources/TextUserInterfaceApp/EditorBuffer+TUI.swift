@@ -9,12 +9,8 @@ import Workspace
 import Editors
 
 extension EditorBuffer {
-	public mutating func moveCursor(dRow: Int, dCol: Int) {
-		let newRow = max(0, min(cursorRow + dRow, max(0, lines.count - 1)))
-		let lineLen = lines.isEmpty ? 0 : lines[newRow].count
-		let newCol = max(0, min(cursorCol + dCol, lineLen))
-		cursorRow = newRow
-		cursorCol = newCol
+	public mutating func moveCursor(dRow: Int, dCol: Int, selecting: Bool = false) {
+		moveCursor(byRow: dRow, column: dCol, selecting: selecting)
 	}
 	
 	public mutating func pageScroll(page: Int, viewRows: Int) {

@@ -74,7 +74,10 @@ let package = Package(
         ),
         .testTarget(
             name: "AppTests",
-            dependencies: ["App"]
+            dependencies: ["App", "Editors", "Utilities"],
+            resources: [
+                .process("Fixtures")
+            ]
         ),
     ]
 )

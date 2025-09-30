@@ -17,3 +17,14 @@ History favours compact, descriptive commit titles (e.g. “First build that wor
 
 ## Platform Notes
 macOS builds link against `ncurses`, while Linux uses `ncursesw`; ensure those packages exist before running `swift build`. For LSP features, validate the `--clangd` and `--sourcekit` paths locally and stub them in CI to avoid blocking the main command. Keep locale-aware behaviour in mind when handling text rendering.
+
+## Milestone Playbooks
+- **M0 — Editor Baseline**: extend `Sources/Editors/EditorBuffer.swift` with cursor movement helpers (line/word/buffer jumps), selection and copy/paste buffers, and integrate scroll tracking with `TextUserInterfaceApp`. Add regression tests in `Tests/AppTests` covering boundary navigation, UTF-8 handling, and viewport clamping.
+- **M0 Tooling**: introduce lightweight fixtures under `Tests/Fixtures/` for sample documents and add helper builders in Utilities to generate buffers for tests.
+- **M5.1 — NotificationService**: wire `NotificationServices.shared()` through UI surfaces that need alerts (background task completion, Codex hand-offs). Provide platform shims under `Sources/Utilities` for macOS (NSUserNotification/UNUserNotification) and Linux (D-Bus). Keep `LoggingNotificationService` available for headless environments.
+- **Task Runner Prep**: when adding command palette entries, route build/test/format shortcuts through SwiftPM (`swift build`, `swift test`, `swift format`) and document common presets in this file.
+
+## Testing & QA Playbook Additions
+- Use `swift test` locally; when the sandbox blocks cache directories, rerun with `SWIFT_MODULE_CACHE_PATH=$(pwd)/.swift-module-cache`. If failures persist, escalate the command.
+- Add unit coverage for each new editor operation and NotificationService backend. Stub external dependencies (D-Bus, UNUserNotification) behind protocols so tests stay deterministic.
+- Prefer `XCTExpectFailure` to mark known gaps instead of commenting out tests.

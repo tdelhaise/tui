@@ -1,0 +1,3 @@
+First line for buffer tests.
+Second line with words.
+Third line.
