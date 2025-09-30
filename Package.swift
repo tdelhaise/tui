@@ -72,12 +72,12 @@ let package = Package(
                 .linkedLibrary("ncursesw", .when(platforms: [.linux]))
             ]
         ),
-        .testTarget(
-            name: "AppTests",
-            dependencies: ["App", "Editors", "Utilities"],
-            resources: [
-                .process("Fixtures")
-            ]
-        ),
+		.testTarget(
+			name: "AppTests",
+			dependencies: ["App", "TextUserInterfaceApp", "Editors", "Utilities"],
+			resources: [
+				.process("Fixtures")
+			]
+		),
     ]
 )

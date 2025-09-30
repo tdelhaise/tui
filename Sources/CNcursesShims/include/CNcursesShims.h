@@ -22,6 +22,9 @@ void tui_addstr(const char *s);
 int  tui_cols(void);
 int  tui_lines(void);
 void tui_keypad_stdscr(bool enable); // 0/1
+void tui_reverse_on(void);
+void tui_reverse_off(void);
+void tui_nodelay(bool enable);
 
 #ifdef __cplusplus
 }

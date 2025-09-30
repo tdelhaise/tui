@@ -29,3 +29,15 @@ int tui_cols(void) {
 int tui_lines(void) {
 	return LINES;
 }
+
+void tui_reverse_on(void) {
+	attron(A_REVERSE);
+}
+
+void tui_reverse_off(void) {
+	attroff(A_REVERSE);
+}
+
+void tui_nodelay(bool enable) {
+	nodelay(stdscr, enable ? TRUE : FALSE);
+}

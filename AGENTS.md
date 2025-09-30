@@ -22,6 +22,7 @@ macOS builds link against `ncurses`, while Linux uses `ncursesw`; ensure those p
 - `Shift+Arrow` extends the selection while moving; plain arrows clear the selection.
 - `Home`/`End` (and their Shift variants) jump to the start/end of the current line.
 - `v` toggles selection anchoring at the cursor, `y` copies, `x` cuts, and `p` pastes using the in-memory clipboard.
+- `Option+Arrow` (or `Option+f`/`Option+b`) hops whole words; add Shift to grow a word-sized selection.
 - Copy/cut/paste emit notifications via `NotificationServices` (osascript on macOS, `notify-send` on Linux); override the service in tests to avoid spawning processes.
 - Status bar displays cursor position and selection length; ensure updates stay under the terminal width.
 

@@ -67,6 +67,11 @@ public final class TextUserInterfaceApp {
 
 			switch key {
 			case 27, 113:
+				if key == 27 {
+					if handleEscapeSequence() {
+						continue
+					}
+				}
 				running = false
 			case KEY_UP:
 				mutateBuffer { buffer in
@@ -227,10 +232,31 @@ public final class TextUserInterfaceApp {
 		}
 		
 		let maxLine = min(buf.lines.count, Int(scrollRow) + Int(height))
+		let selection = buf.hasSelection ? buf.selection?.normalized : nil
 		var screenRow = top
 		for i in Int(scrollRow)..<maxLine {
-			let line = TextWidth.clip(buf.lines[i], max: Int(width) - 1)
-			put(screenRow, 0, line)
+			let rawLine = buf.lines[i]
+			let clipped = TextWidth.clip(rawLine, max: Int(width) - 1)
+			move(screenRow, 0)
+			clrtoeol()
+			if let selectionRange = selectionColumns(forRow: i, selection: selection) {
+				let begin = max(0, selectionRange.lowerBound)
+				let end = min(selectionRange.upperBound, clipped.count)
+				if begin < end {
+					let prefix = substring(clipped, start: 0, end: begin)
+					let highlight = substring(clipped, start: begin, end: end)
+					let suffix = substring(clipped, start: end, end: clipped.count)
+					append(prefix)
+					tui_reverse_on()
+					append(highlight)
+					tui_reverse_off()
+					append(suffix)
+				} else {
+					append(clipped)
+				}
+			} else {
+				append(clipped)
+			}
 			screenRow += 1
 		}
 		
@@ -270,4 +296,162 @@ public final class TextUserInterfaceApp {
 		put(7, 2, "• UTF-8 locale set (if terminal supports it)")
 		put(9, 2, "Try typing; press 'q' to quit.")
 	}
+
+	private func selectionColumns(forRow row: Int, selection: (start: EditorBuffer.Cursor, end: EditorBuffer.Cursor)?) -> Range<Int>? {
+		guard let selection else { return nil }
+		if row < selection.start.row || row > selection.end.row { return nil }
+		let startCol = row == selection.start.row ? selection.start.column : 0
+		let endCol: Int
+		if row == selection.end.row {
+			endCol = selection.end.column
+		} else {
+			endCol = Int.max
+		}
+		if startCol >= endCol { return nil }
+		return startCol..<endCol
+	}
+
+	private func substring(_ string: String, start: Int, end: Int) -> String {
+		if start >= end { return "" }
+		let clampedStart = max(0, min(start, string.count))
+		let clampedEnd = max(0, min(end, string.count))
+		if clampedStart >= clampedEnd { return "" }
+		let startIndex = string.index(string.startIndex, offsetBy: clampedStart)
+		let endIndex = string.index(string.startIndex, offsetBy: clampedEnd)
+		return String(string[startIndex..<endIndex])
+	}
+
+	private func append(_ s: String) {
+		guard !s.isEmpty else { return }
+		s.withCString { cstr in tui_addstr(cstr) }
+	}
+
+	private func handleEscapeSequence(maxLength: Int = 8) -> Bool {
+		tui_nodelay(true)
+		defer { tui_nodelay(false) }
+		var codes: [Int32] = []
+		while codes.count < maxLength {
+			let next = getch()
+			if next == ERR { break }
+			let value = Int32(next)
+			codes.append(value)
+			if isTerminatingEscapeCode(value) { break }
+		}
+		guard !codes.isEmpty else { return false }
+		if let asciiSequence = asciiString(from: codes), handleMetaWordSequence(asciiSequence) {
+			return true
+		}
+		return handleArrowEscapeSequence(codes)
+	}
+
+	private func handleMetaWordSequence(_ sequence: String) -> Bool {
+		switch sequence {
+		case "b":
+			mutateBuffer { buffer in
+				buffer.moveToPreviousWord()
+				return nil
+			}
+			return true
+		case "f":
+			mutateBuffer { buffer in
+				buffer.moveToNextWord()
+				return nil
+			}
+			return true
+		case "B":
+			mutateBuffer { buffer in
+				buffer.moveToPreviousWord(selecting: true)
+				return nil
+			}
+			return true
+		case "F":
+			mutateBuffer { buffer in
+				buffer.moveToNextWord(selecting: true)
+				return nil
+			}
+			return true
+		default:
+			return false
+		}
+	}
+
+	private func handleArrowEscapeSequence(_ codes: [Int32]) -> Bool {
+		guard let sequence = asciiString(from: codes), sequence.hasPrefix("[") else { return false }
+		let selecting = escapeSequenceHasShiftModifier(sequence)
+		if sequence.hasSuffix("D") {
+			mutateBuffer { buffer in
+				buffer.moveToPreviousWord(selecting: selecting)
+				return nil
+			}
+			return true
+		}
+		if sequence.hasSuffix("C") {
+			mutateBuffer { buffer in
+				buffer.moveToNextWord(selecting: selecting)
+				return nil
+			}
+			return true
+		}
+		return false
+	}
+
+	private func isTerminatingEscapeCode(_ code: Int32) -> Bool {
+		if code < 0 || code > 255 { return true }
+		if let scalar = UnicodeScalar(UInt32(code)) {
+			if CharacterSet.letters.contains(scalar) { return true }
+			if scalar == "~" { return true }
+		}
+		return false
+	}
+
+	private func asciiString(from codes: [Int32]) -> String? {
+		var scalars: [UnicodeScalar] = []
+		scalars.reserveCapacity(codes.count)
+		for code in codes {
+			guard code >= 0, code <= 255, let scalar = UnicodeScalar(UInt32(code)) else { return nil }
+			scalars.append(scalar)
+		}
+		return String(String.UnicodeScalarView(scalars))
+	}
+
+private func escapeSequenceHasShiftModifier(_ sequence: String) -> Bool {
+	guard let semicolonIndex = sequence.lastIndex(of: ";") else { return false }
+	let modifierStart = sequence.index(after: semicolonIndex)
+	let modifierEnd = sequence.index(before: sequence.endIndex)
+	guard modifierStart < modifierEnd else { return false }
+	let modifierSlice = sequence[modifierStart..<modifierEnd]
+	guard let modifier = Int(modifierSlice) else { return false }
+	return modifier % 2 == 0
 }
+}
+
+#if DEBUG
+extension TextUserInterfaceApp {
+	func _debugSetBuffer(_ buffer: EditorBuffer?) {
+		self.buffer = buffer
+	}
+
+	func _debugBuffer() -> EditorBuffer? {
+		buffer
+	}
+
+	func _debugHandleEscapeSequence(codes: [Int32]) -> Bool {
+		if let asciiSequence = asciiString(from: codes), handleMetaWordSequence(asciiSequence) {
+			return true
+		}
+		return handleArrowEscapeSequence(codes)
+	}
+
+	func _debugHandleMetaWordSequence(_ sequence: String) -> Bool {
+		handleMetaWordSequence(sequence)
+	}
+
+	func _debugHandleArrowEscapeSequence(_ codes: [Int32]) -> Bool {
+		handleArrowEscapeSequence(codes)
+	}
+
+	func _debugEscapeSequenceHasShiftModifier(_ sequence: String) -> Bool {
+		escapeSequenceHasShiftModifier(sequence)
+	}
+}
+#endif
