@@ -29,7 +29,16 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libncursesw5-dev
+          sudo apt-get install -y libncursesw5-dev libpython3-dev
+
+      - name: Set up Swift 6.2 toolchain
+        uses: swiftlang/setup-swift@v1
+        with:
+          swift-version: '6.2'
+
+      - name: Prepare module caches
+        run: |
+          mkdir -p "$SWIFT_MODULE_CACHE_PATH" "$CLANG_MODULE_CACHE_PATH"
 
       - name: Show Swift version
         run: swift --version
