@@ -46,11 +46,8 @@ jobs:
           curl -sSL "https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml" -o "$META_FILE"
 
           DOWNLOAD=$(awk -F': *' '/^download:/ {print $2; exit}' "$META_FILE")
-          DOWNLOAD_DIR=$(awk -F': *' '/^download_dir:/ {print $2; exit}' "$META_FILE")
-          if [ -z "$DOWNLOAD_DIR" ]; then
-            DOWNLOAD_DIR=$(awk -F': *' '/^download_directory:/ {print $2; exit}' "$META_FILE")
-          fi
-          URL=$(awk -F': *' '/^download_url:/ {print $2; exit}' "$META_FILE")
+          DOWNLOAD_DIR=$(awk -F': *' '/^(download_dir|download_directory|dir):/ {print $2; exit}' "$META_FILE")
+          URL=$(awk -F': *' '/^(download_url|url):/ {print $2; exit}' "$META_FILE")
 
           if [ -z "$DOWNLOAD" ]; then
             echo "Failed to locate Swift snapshot download name" >&2
