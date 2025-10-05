@@ -2,35 +2,57 @@ import os
 import subprocess
 import sys
 import urllib.parse
-
-try:
-    import yaml
-except ImportError:
-    raise SystemExit("PyYAML is required but not available on the runner")
+from pathlib import Path
 
 
-def first_present(data, keys):
-    for key in keys:
-        value = data.get(key)
+TARGET_KEYS = {
+    "download": ["download", "file", "filename"],
+    "download_dir": ["download_dir", "download_directory", "dir"],
+    "download_url": ["download_url", "url"],
+}
+
+
+def parse_metadata(path: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key not in result and value:
+                result[key] = value
+    return result
+
+
+def first_present(metadata: dict[str, str], aliases: list[str]) -> str | None:
+    for key in aliases:
+        value = metadata.get(key)
         if value:
             return value
     return None
 
 
-def main(argv):
+def main(argv: list[str]) -> None:
     if len(argv) != 9:
         raise SystemExit("install_swift_toolchain.py expects 8 arguments")
 
-    meta_path, runner_os, channel, platform, swift_cache, clang_cache, github_path, github_env = argv[1:9]
+    meta_path = Path(argv[1])
+    runner_os, channel, platform = argv[2:5]
+    swift_cache, clang_cache = argv[5:7]
+    github_path, github_env = argv[7:9]
 
-    with open(meta_path, "r", encoding="utf-8") as handle:
-        meta = yaml.safe_load(handle)
+    metadata = parse_metadata(meta_path)
 
-    download = first_present(meta, ["download", "file", "filename"])
+    download = first_present(metadata, TARGET_KEYS["download"])
     if not download:
         raise SystemExit("Failed to locate Swift snapshot download name")
 
-    download_dir = first_present(meta, ["download_dir", "download_directory", "dir"])
+    download_dir = first_present(metadata, TARGET_KEYS["download_dir"])
     if not download_dir:
         if runner_os == "macOS":
             base = download.removesuffix(".pkg")
@@ -42,7 +64,7 @@ def main(argv):
     if not download_dir:
         raise SystemExit("Failed to determine Swift snapshot directory")
 
-    url = first_present(meta, ["download_url", "url"])
+    url = first_present(metadata, TARGET_KEYS["download_url"])
     if not url:
         url = f"https://download.swift.org/{channel}/{platform}/{download_dir}/{download}"
     elif not urllib.parse.urlparse(url).scheme:

@@ -46,7 +46,6 @@ jobs:
           META_FILE=$(mktemp)
           curl -sSL "https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml" -o "$META_FILE"
 
-          python3 -m pip install --user PyYAML
           python3 .github/scripts/install_swift_toolchain.py \
             "$META_FILE" "$RUNNER_OS" "$CHANNEL" "$PLATFORM" \
             "$SWIFT_MODULE_CACHE_PATH" "$CLANG_MODULE_CACHE_PATH" \
