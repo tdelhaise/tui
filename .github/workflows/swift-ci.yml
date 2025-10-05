@@ -45,8 +45,8 @@ jobs:
           META_FILE=$(mktemp)
           curl -sSL "https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml" -o "$META_FILE"
 
-          DOWNLOAD=$(grep '^download:' "$META_FILE" | head -n 1 | cut -d':' -f2- | xargs)
-          URL=$(grep '^download_url:' "$META_FILE" | head -n 1 | cut -d':' -f2- | xargs)
+          DOWNLOAD=$(grep '^download:' "$META_FILE" | head -n 1 | sed 's/^download:[[:space:]]*//')
+          URL=$(grep '^download_url:' "$META_FILE" | head -n 1 | sed 's/^download_url:[[:space:]]*//')
 
           if [ -z "$DOWNLOAD" ] || [ -z "$URL" ]; then
             echo "Failed to parse Swift snapshot metadata" >&2
@@ -56,7 +56,7 @@ jobs:
           echo "Resolved Swift snapshot: $DOWNLOAD"
 
           if [ "$RUNNER_OS" = "macOS" ]; then
-            curl -sSL "$URL" -o swift.pkg
+            curl -sSL "https://download.swift.org${URL}" -o swift.pkg
             sudo installer -pkg swift.pkg -target /
             TOOLCHAIN_ID=${DOWNLOAD%-osx.pkg}
             TOOLCHAIN_ID=${TOOLCHAIN_ID%.pkg}
@@ -64,7 +64,7 @@ jobs:
             echo "${TOOLCHAIN_PATH}" >> "$GITHUB_PATH"
             echo "TOOLCHAINS=swift" >> "$GITHUB_ENV"
           else
-            curl -sSL "$URL" -o swift.tar.gz
+            curl -sSL "https://download.swift.org${URL}" -o swift.tar.gz
             tar -xzf swift.tar.gz
             SNAPSHOT_DIR=${DOWNLOAD%.tar.gz}
             echo "${PWD}/${SNAPSHOT_DIR}/usr/bin" >> "$GITHUB_PATH"
