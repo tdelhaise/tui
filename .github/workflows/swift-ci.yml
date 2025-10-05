@@ -45,12 +45,12 @@ jobs:
           META_FILE=$(mktemp)
           curl -sSL "https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml" -o "$META_FILE"
 
-          DOWNLOAD=$(awk -F': ' '/^download:/ {print $2; exit}' "$META_FILE")
-          DOWNLOAD_DIR=$(awk -F': ' '/^download_dir:/ {print $2; exit}' "$META_FILE")
+          DOWNLOAD=$(awk -F': *' '/^download:/ {print $2; exit}' "$META_FILE")
+          DOWNLOAD_DIR=$(awk -F': *' '/^download_dir:/ {print $2; exit}' "$META_FILE")
           if [ -z "$DOWNLOAD_DIR" ]; then
-            DOWNLOAD_DIR=$(awk -F': ' '/^download_directory:/ {print $2; exit}' "$META_FILE")
+            DOWNLOAD_DIR=$(awk -F': *' '/^download_directory:/ {print $2; exit}' "$META_FILE")
           fi
-          URL=$(awk -F': ' '/^download_url:/ {print $2; exit}' "$META_FILE")
+          URL=$(awk -F': *' '/^download_url:/ {print $2; exit}' "$META_FILE")
 
           if [ -z "$DOWNLOAD" ]; then
             echo "Failed to locate Swift snapshot download name" >&2
@@ -81,7 +81,7 @@ jobs:
           echo "Resolved Swift snapshot: $DOWNLOAD (dir: $DOWNLOAD_DIR)"
 
           if [ "$RUNNER_OS" = "macOS" ]; then
-            curl -sSL "https://download.swift.org${URL}" -o swift.pkg
+            curl -sSL "$URL" -o swift.pkg
             sudo installer -pkg swift.pkg -target /
             TOOLCHAIN_ID=${DOWNLOAD%-osx.pkg}
             TOOLCHAIN_ID=${TOOLCHAIN_ID%.pkg}
@@ -89,7 +89,7 @@ jobs:
             echo "${TOOLCHAIN_PATH}" >> "$GITHUB_PATH"
             echo "TOOLCHAINS=swift" >> "$GITHUB_ENV"
           else
-            curl -sSL "https://download.swift.org${URL}" -o swift.tar.gz
+            curl -sSL "$URL" -o swift.tar.gz
             tar -xzf swift.tar.gz
             SNAPSHOT_DIR=${DOWNLOAD%.tar.gz}
             echo "${PWD}/${SNAPSHOT_DIR}/usr/bin" >> "$GITHUB_PATH"
