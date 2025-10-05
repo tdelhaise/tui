@@ -33,9 +33,10 @@ jobs:
 
       - name: Install Swift development toolchain
         shell: bash
+        env:
+          CHANNEL: development
         run: |
           set -euxo pipefail
-          CHANNEL=development
           if [ "$RUNNER_OS" = "macOS" ]; then
             PLATFORM=xcode
           else
@@ -45,59 +46,81 @@ jobs:
           META_FILE=$(mktemp)
           curl -sSL "https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml" -o "$META_FILE"
 
-          DOWNLOAD=$(awk -F': *' '/^download:/ {print $2; exit}' "$META_FILE")
-          DOWNLOAD_DIR=$(awk -F': *' '/^(download_dir|download_directory|dir):/ {print $2; exit}' "$META_FILE")
-          URL=$(awk -F': *' '/^(download_url|url):/ {print $2; exit}' "$META_FILE")
+          python3 - <<'PY' "$META_FILE" "$RUNNER_OS" "$CHANNEL" "$PLATFORM" \
+            "$SWIFT_MODULE_CACHE_PATH" "$CLANG_MODULE_CACHE_PATH" "$GITHUB_PATH" "$GITHUB_ENV" "$PWD"
+import os
+import subprocess
+import sys
+import urllib.parse
 
-          if [ -z "$DOWNLOAD" ]; then
-            echo "Failed to locate Swift snapshot download name" >&2
-            exit 1
-          fi
+import yaml
 
-          if [ -z "$DOWNLOAD_DIR" ]; then
-            if [ "$RUNNER_OS" = "macOS" ]; then
-              BASE_WITH_PLATFORM=${DOWNLOAD%.pkg}
-              DOWNLOAD_DIR=${BASE_WITH_PLATFORM%-osx}
-            else
-              BASE_WITH_PLATFORM=${DOWNLOAD%.tar.gz}
-              DOWNLOAD_DIR=${BASE_WITH_PLATFORM%-${PLATFORM}}
-            fi
-          fi
 
-          if [ -z "$DOWNLOAD_DIR" ]; then
-            echo "Failed to determine Swift snapshot directory" >&2
-            exit 1
-          fi
+def first_present(data, keys):
+	for key in keys:
+		value = data.get(key)
+		if value:
+			return value
+	return None
 
-          if [ -z "$URL" ]; then
-            URL="https://download.swift.org/${CHANNEL}/${PLATFORM}/${DOWNLOAD_DIR}/${DOWNLOAD}"
-          elif [[ "$URL" != http* ]]; then
-            URL="https://download.swift.org${URL}"
-          fi
 
-          echo "Resolved Swift snapshot: $DOWNLOAD (dir: $DOWNLOAD_DIR)"
+meta_path, runner_os, channel, platform, swift_cache, clang_cache, github_path, github_env, cwd = sys.argv[1:]
 
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            curl -sSL "$URL" -o swift.pkg
-            sudo installer -pkg swift.pkg -target /
-            TOOLCHAIN_ID=${DOWNLOAD%-osx.pkg}
-            TOOLCHAIN_ID=${TOOLCHAIN_ID%.pkg}
-            TOOLCHAIN_PATH="/Library/Developer/Toolchains/${TOOLCHAIN_ID}.xctoolchain/usr/bin"
-            echo "${TOOLCHAIN_PATH}" >> "$GITHUB_PATH"
-            echo "TOOLCHAINS=swift" >> "$GITHUB_ENV"
-          else
-            curl -sSL "$URL" -o swift.tar.gz
-            tar -xzf swift.tar.gz
-            SNAPSHOT_DIR=${DOWNLOAD%.tar.gz}
-            echo "${PWD}/${SNAPSHOT_DIR}/usr/bin" >> "$GITHUB_PATH"
-            if [ -n "${LD_LIBRARY_PATH:-}" ]; then
-              echo "LD_LIBRARY_PATH=${PWD}/${SNAPSHOT_DIR}/usr/lib:${LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
-            else
-              echo "LD_LIBRARY_PATH=${PWD}/${SNAPSHOT_DIR}/usr/lib" >> "$GITHUB_ENV"
-            fi
-          fi
+with open(meta_path, "r", encoding="utf-8") as handle:
+	meta = yaml.safe_load(handle)
 
-          mkdir -p "$SWIFT_MODULE_CACHE_PATH" "$CLANG_MODULE_CACHE_PATH"
+download = first_present(meta, ["download", "file", "filename"])
+if not download:
+	raise SystemExit("Failed to locate Swift snapshot download name")
+
+download_dir = first_present(meta, ["download_dir", "download_directory", "dir"])
+if not download_dir:
+	if runner_os == "macOS":
+		base = download.removesuffix(".pkg")
+		download_dir = base.removesuffix("-osx")
+	else:
+		base = download.removesuffix(".tar.gz")
+		download_dir = base.removesuffix(f"-{platform}")
+
+if not download_dir:
+	raise SystemExit("Failed to determine Swift snapshot directory")
+
+url = first_present(meta, ["download_url", "url"])
+if not url:
+	url = f"https://download.swift.org/{channel}/{platform}/{download_dir}/{download}"
+elif not urllib.parse.urlparse(url).scheme:
+	url = f"https://download.swift.org{url}"
+
+print(f"Resolved Swift snapshot: {download} (dir: {download_dir})")
+
+os.makedirs(swift_cache, exist_ok=True)
+os.makedirs(clang_cache, exist_ok=True)
+
+if runner_os == "macOS":
+	subprocess.run(["curl", "-sSL", url, "-o", "swift.pkg"], check=True)
+	subprocess.run(["sudo", "installer", "-pkg", "swift.pkg", "-target", "/"], check=True)
+	toolchain_id = download.removesuffix("-osx.pkg").removesuffix(".pkg")
+	toolchain_path = f"/Library/Developer/Toolchains/{toolchain_id}.xctoolchain/usr/bin"
+	with open(github_path, "a", encoding="utf-8") as handle:
+		handle.write(f"{toolchain_path}\n")
+	with open(github_env, "a", encoding="utf-8") as handle:
+		handle.write("TOOLCHAINS=swift\n")
+else:
+	subprocess.run(["curl", "-sSL", url, "-o", "swift.tar.gz"], check=True)
+	subprocess.run(["tar", "-xzf", "swift.tar.gz"], check=True)
+	snapshot_dir = download.removesuffix(".tar.gz")
+	bin_path = os.path.join(cwd, snapshot_dir, "usr", "bin")
+	lib_path = os.path.join(cwd, snapshot_dir, "usr", "lib")
+	with open(github_path, "a", encoding="utf-8") as handle:
+		handle.write(f"{bin_path}\n")
+	ld_library_path = os.environ.get("LD_LIBRARY_PATH", "")
+	if ld_library_path:
+		value = f"LD_LIBRARY_PATH={lib_path}:{ld_library_path}\n"
+	else:
+		value = f"LD_LIBRARY_PATH={lib_path}\n"
+	with open(github_env, "a", encoding="utf-8") as handle:
+		handle.write(value)
+PY
 
       - name: Show Swift version
         run: swift --version
