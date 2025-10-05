@@ -31,10 +31,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libncursesw5-dev libpython3-dev
 
-      - name: Set up Swift 6.2 toolchain
-        uses: swiftlang/setup-swift@v1
+      - name: Set up Swift toolchain
+        uses: swift-actions/setup-swift@v1
         with:
-          swift-version: '6.2'
+          swift-version: 'nightly-main'
 
       - name: Prepare module caches
         run: |
