@@ -45,15 +45,40 @@ jobs:
           META_FILE=$(mktemp)
           curl -sSL "https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml" -o "$META_FILE"
 
-          DOWNLOAD=$(grep '^download:' "$META_FILE" | head -n 1 | sed 's/^download:[[:space:]]*//')
-          URL=$(grep '^download_url:' "$META_FILE" | head -n 1 | sed 's/^download_url:[[:space:]]*//')
+          DOWNLOAD=$(awk -F': ' '/^download:/ {print $2; exit}' "$META_FILE")
+          DOWNLOAD_DIR=$(awk -F': ' '/^download_dir:/ {print $2; exit}' "$META_FILE")
+          if [ -z "$DOWNLOAD_DIR" ]; then
+            DOWNLOAD_DIR=$(awk -F': ' '/^download_directory:/ {print $2; exit}' "$META_FILE")
+          fi
+          URL=$(awk -F': ' '/^download_url:/ {print $2; exit}' "$META_FILE")
 
-          if [ -z "$DOWNLOAD" ] || [ -z "$URL" ]; then
-            echo "Failed to parse Swift snapshot metadata" >&2
+          if [ -z "$DOWNLOAD" ]; then
+            echo "Failed to locate Swift snapshot download name" >&2
             exit 1
           fi
 
-          echo "Resolved Swift snapshot: $DOWNLOAD"
+          if [ -z "$DOWNLOAD_DIR" ]; then
+            if [ "$RUNNER_OS" = "macOS" ]; then
+              BASE_WITH_PLATFORM=${DOWNLOAD%.pkg}
+              DOWNLOAD_DIR=${BASE_WITH_PLATFORM%-osx}
+            else
+              BASE_WITH_PLATFORM=${DOWNLOAD%.tar.gz}
+              DOWNLOAD_DIR=${BASE_WITH_PLATFORM%-${PLATFORM}}
+            fi
+          fi
+
+          if [ -z "$DOWNLOAD_DIR" ]; then
+            echo "Failed to determine Swift snapshot directory" >&2
+            exit 1
+          fi
+
+          if [ -z "$URL" ]; then
+            URL="https://download.swift.org/${CHANNEL}/${PLATFORM}/${DOWNLOAD_DIR}/${DOWNLOAD}"
+          elif [[ "$URL" != http* ]]; then
+            URL="https://download.swift.org${URL}"
+          fi
+
+          echo "Resolved Swift snapshot: $DOWNLOAD (dir: $DOWNLOAD_DIR)"
 
           if [ "$RUNNER_OS" = "macOS" ]; then
             curl -sSL "https://download.swift.org${URL}" -o swift.pkg
