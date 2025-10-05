@@ -45,29 +45,13 @@ jobs:
           META_FILE=$(mktemp)
           curl -sSL "https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml" -o "$META_FILE"
 
-          readarray -t SWIFT_INFO < <(python3 - <<'PY' "$META_FILE"
-import sys
+          DOWNLOAD=$(grep '^download:' "$META_FILE" | head -n 1 | awk '{print $2}')
+          URL=$(grep '^download_url:' "$META_FILE" | head -n 1 | awk '{print $2}')
 
-download = ''
-download_url = ''
-with open(sys.argv[1], 'r', encoding='utf-8') as handle:
-    for raw_line in handle:
-        line = raw_line.strip()
-        if line.startswith('download:'):
-            download = line.split(':', 1)[1].strip()
-        elif line.startswith('download_url:'):
-            download_url = line.split(':', 1)[1].strip()
-
-if not download or not download_url:
-    raise SystemExit('Failed to parse Swift snapshot metadata')
-
-print(download)
-print(download_url)
-PY
-          )
-
-          DOWNLOAD="${SWIFT_INFO[0]}"
-          URL="${SWIFT_INFO[1]}"
+          if [ -z "$DOWNLOAD" ] || [ -z "$URL" ]; then
+            echo "Failed to parse Swift snapshot metadata" >&2
+            exit 1
+          fi
 
           echo "Resolved Swift snapshot: $DOWNLOAD"
 
