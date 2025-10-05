@@ -19,8 +19,8 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-14]
     env:
-      SWIFT_MODULE_CACHE_PATH: ${{ runner.temp }}/swift-module-cache
-      CLANG_MODULE_CACHE_PATH: ${{ runner.temp }}/clang-module-cache
+      SWIFT_MODULE_CACHE_PATH: ${{ github.workspace }}/.swift-module-cache
+      CLANG_MODULE_CACHE_PATH: ${{ github.workspace }}/.clang-module-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v4
