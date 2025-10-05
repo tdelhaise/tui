@@ -31,13 +31,42 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libncursesw5-dev libpython3-dev
 
-      - name: Set up Swift toolchain
-        uses: swift-actions/setup-swift@v1
-        with:
-          swift-version: 'nightly-main'
-
-      - name: Prepare module caches
+      - name: Install Swift development toolchain
+        shell: bash
         run: |
+          set -euo pipefail
+          CHANNEL=development
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            PLATFORM=xcode
+            ARCHIVE_EXT=osx.pkg
+          else
+            PLATFORM=ubuntu24.04
+            ARCHIVE_EXT=tar.gz
+          fi
+
+          METADATA=$(curl -sSL https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml)
+          DOWNLOAD=$(echo "$METADATA" | awk '/^download:/ {print $2}')
+          URL=$(echo "$METADATA" | awk '/^download_url:/ {print $2}')
+
+          echo "Resolved Swift snapshot: $DOWNLOAD"
+
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            curl -sSL "$URL" -o swift.pkg
+            sudo installer -pkg swift.pkg -target /
+            TOOLCHAIN_PATH="/Library/Developer/Toolchains/${DOWNLOAD}.xctoolchain/usr/bin"
+            echo "${TOOLCHAIN_PATH}" >> "$GITHUB_PATH"
+          else
+            curl -sSL "$URL" -o swift.tar.gz
+            tar -xzf swift.tar.gz
+            SNAPSHOT_DIR="${DOWNLOAD}-${PLATFORM}"
+            echo "${PWD}/${SNAPSHOT_DIR}/usr/bin" >> "$GITHUB_PATH"
+            if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+              echo "LD_LIBRARY_PATH=${PWD}/${SNAPSHOT_DIR}/usr/lib:${LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+            else
+              echo "LD_LIBRARY_PATH=${PWD}/${SNAPSHOT_DIR}/usr/lib" >> "$GITHUB_ENV"
+            fi
+          fi
+
           mkdir -p "$SWIFT_MODULE_CACHE_PATH" "$CLANG_MODULE_CACHE_PATH"
 
       - name: Show Swift version
