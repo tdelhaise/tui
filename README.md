@@ -23,6 +23,8 @@
 - [ ] **M4.4 — Unified Diagnostics**: merge build, LSP, and git warnings into a single diagnostics view with filtering and quick navigation.
 - [ ] **M5 — Toolchain Automation**: command palette actions for clang/clang++/swift-format, background task queue for builds/tests, and extensibility hooks for future tool plugins.
 - [x] **M5.1 — Collaboration Hooks**: introduce a cross-platform `NotificationService` abstraction (macOS notifications, Linux D-Bus) and document scripts for coordinating external agents such as Codex.
+- [ ] **Tooling — Input Fixtures**: capture recorded key sequences into fixtures and replay them in tests to guard future keymap changes.
+- [ ] **Tooling — Key Capture Mode**: optional runtime flag to log unhandled key events to disk for later analysis.
 - [ ] **M5.2 — Agent Prompt Panel**: prototype an optional prompt buffer and command palette entries (`Ask Codex`, `Summarise Diff`) that route through a user-supplied local proxy, keeping API secrets out of the core repo.
 - [ ] **M5.3 — Agent Plugin API**: formalise a plugin interface so external assistants can subscribe to `Workspace` events, inject annotations, and trigger toasts without patching the editor.
 - [ ] **M5.4 — SwiftPM Task Runner**: surface curated SwiftPM workflows (build, test, format) and allow custom command presets, streaming structured output into `tui`.

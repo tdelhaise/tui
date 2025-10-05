@@ -1,4 +1,5 @@
 import Foundation
+import Logging
 
 public struct NotificationPayload: Sendable {
 	public enum Kind: Sendable {
@@ -52,24 +53,26 @@ public enum NotificationServices {
 
 struct PlatformNotificationService: NotificationService {
 	private static let capabilities = NotificationCapabilities.detect()
+	
+	private let logger = Logger(label: "PlatformNotificationService")
 
 	func post(_ payload: NotificationPayload) {
 		#if os(macOS)
 			if let executable = Self.capabilities.appleScriptExecutable {
 				if macOSPost(payload, executable: executable) { return }
 			} else {
-				Log.info("Notification shim disabled: osascript unavailable")
+				logger.info("Notification shim disabled: osascript unavailable")
 			}
-			Log.info("Notification (macOS fallback): \(payload.title) - \(payload.message)")
+			logger.info("Notification (macOS fallback): \(payload.title) - \(payload.message)")
 		#elseif os(Linux)
 			if let executable = Self.capabilities.notifySendCommand {
 				if linuxPost(payload, executable: executable) { return }
 			} else {
-				Log.info("Notification shim disabled: notify-send unavailable")
+				logger.info("Notification shim disabled: notify-send unavailable")
 			}
-			Log.info("Notification (Linux fallback): \(payload.title) - \(payload.message)")
+			logger.info("Notification (Linux fallback): \(payload.title) - \(payload.message)")
 		#else
-			Log.info("Notification: \(payload.title) - \(payload.message)")
+			logger.info("Notification: \(payload.title) - \(payload.message)")
 		#endif
 	}
 	
@@ -120,12 +123,12 @@ struct PlatformNotificationService: NotificationService {
 			try process.run()
 			process.waitUntilExit()
 			if process.terminationStatus != 0 {
-				Log.warn("Notification command failed (code: \(process.terminationStatus)) for \(payload.title)")
+				logger.warning("Notification command failed (code: \(process.terminationStatus)) for \(payload.title)")
 				return false
 			}
 			return true
 		} catch {
-			Log.warn("Notification command failed for \(payload.title): \(error)")
+			logger.warning("Notification command failed for \(payload.title): \(error)")
 			return false
 		}
 	}
@@ -176,9 +179,12 @@ private extension NotificationCapabilities {
 #endif
 
 public struct LoggingNotificationService: NotificationService {
+	
+	private let logger = Logger(label: "LoggingNotificationService")
+	
 	public init() {}
 
 	public func post(_ payload: NotificationPayload) {
-		Log.info("NotificationFallback \(payload.kind): \(payload.title) - \(payload.message)")
+		logger.info("NotificationFallback \(payload.kind): \(payload.title) - \(payload.message)")
 	}
 }

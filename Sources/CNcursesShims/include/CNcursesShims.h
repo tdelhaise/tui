@@ -18,6 +18,7 @@
 extern "C" {
 #endif
 
+void tui_intr_flush(bool enable);
 void tui_addstr(const char *s);
 int  tui_cols(void);
 int  tui_lines(void);

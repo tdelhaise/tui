@@ -83,7 +83,7 @@ public actor LanguageServerProtocolClient {
 
     private func handleMessageData(_ data: Data) async {
         // For now, just log
-        if let s = String(data: data, encoding: .utf8) {
+		if String(data: data, encoding: .utf8) != nil {
             // fputs("[LSP <-] \(s)\n", stderr)
         }
     }

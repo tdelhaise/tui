@@ -10,6 +10,10 @@ void tui_addstr(const char *s) {
 	addstr(s);
 }
 
+void tui_intr_flush(bool enable) {
+	intrflush(stdscr, enable ? TRUE : FALSE);
+}
+
 void tui_keypad_stdscr(bool enable) {
 	keypad(stdscr, enable ? TRUE : FALSE);
 }
