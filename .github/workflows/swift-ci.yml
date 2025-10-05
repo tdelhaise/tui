@@ -38,15 +38,36 @@ jobs:
           CHANNEL=development
           if [ "$RUNNER_OS" = "macOS" ]; then
             PLATFORM=xcode
-            ARCHIVE_EXT=osx.pkg
           else
             PLATFORM=ubuntu24.04
-            ARCHIVE_EXT=tar.gz
           fi
 
-          METADATA=$(curl -sSL https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml)
-          DOWNLOAD=$(echo "$METADATA" | awk '/^download:/ {print $2}')
-          URL=$(echo "$METADATA" | awk '/^download_url:/ {print $2}')
+          META_FILE=$(mktemp)
+          curl -sSL "https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml" -o "$META_FILE"
+
+          readarray -t SWIFT_INFO < <(python3 - <<'PY' "$META_FILE"
+import sys
+
+download = ''
+download_url = ''
+with open(sys.argv[1], 'r', encoding='utf-8') as handle:
+    for raw_line in handle:
+        line = raw_line.strip()
+        if line.startswith('download:'):
+            download = line.split(':', 1)[1].strip()
+        elif line.startswith('download_url:'):
+            download_url = line.split(':', 1)[1].strip()
+
+if not download or not download_url:
+    raise SystemExit('Failed to parse Swift snapshot metadata')
+
+print(download)
+print(download_url)
+PY
+          )
+
+          DOWNLOAD="${SWIFT_INFO[0]}"
+          URL="${SWIFT_INFO[1]}"
 
           echo "Resolved Swift snapshot: $DOWNLOAD"
 
@@ -55,6 +76,7 @@ jobs:
             sudo installer -pkg swift.pkg -target /
             TOOLCHAIN_PATH="/Library/Developer/Toolchains/${DOWNLOAD}.xctoolchain/usr/bin"
             echo "${TOOLCHAIN_PATH}" >> "$GITHUB_PATH"
+            echo "TOOLCHAINS=swift" >> "$GITHUB_ENV"
           else
             curl -sSL "$URL" -o swift.tar.gz
             tar -xzf swift.tar.gz
