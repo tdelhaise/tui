@@ -34,7 +34,7 @@ jobs:
       - name: Install Swift development toolchain
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           CHANNEL=development
           if [ "$RUNNER_OS" = "macOS" ]; then
             PLATFORM=xcode
@@ -45,8 +45,8 @@ jobs:
           META_FILE=$(mktemp)
           curl -sSL "https://download.swift.org/${CHANNEL}/${PLATFORM}/latest-build.yml" -o "$META_FILE"
 
-          DOWNLOAD=$(grep '^download:' "$META_FILE" | head -n 1 | awk '{print $2}')
-          URL=$(grep '^download_url:' "$META_FILE" | head -n 1 | awk '{print $2}')
+          DOWNLOAD=$(grep '^download:' "$META_FILE" | head -n 1 | cut -d':' -f2- | xargs)
+          URL=$(grep '^download_url:' "$META_FILE" | head -n 1 | cut -d':' -f2- | xargs)
 
           if [ -z "$DOWNLOAD" ] || [ -z "$URL" ]; then
             echo "Failed to parse Swift snapshot metadata" >&2
@@ -58,13 +58,15 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then
             curl -sSL "$URL" -o swift.pkg
             sudo installer -pkg swift.pkg -target /
-            TOOLCHAIN_PATH="/Library/Developer/Toolchains/${DOWNLOAD}.xctoolchain/usr/bin"
+            TOOLCHAIN_ID=${DOWNLOAD%-osx.pkg}
+            TOOLCHAIN_ID=${TOOLCHAIN_ID%.pkg}
+            TOOLCHAIN_PATH="/Library/Developer/Toolchains/${TOOLCHAIN_ID}.xctoolchain/usr/bin"
             echo "${TOOLCHAIN_PATH}" >> "$GITHUB_PATH"
             echo "TOOLCHAINS=swift" >> "$GITHUB_ENV"
           else
             curl -sSL "$URL" -o swift.tar.gz
             tar -xzf swift.tar.gz
-            SNAPSHOT_DIR="${DOWNLOAD}-${PLATFORM}"
+            SNAPSHOT_DIR=${DOWNLOAD%.tar.gz}
             echo "${PWD}/${SNAPSHOT_DIR}/usr/bin" >> "$GITHUB_PATH"
             if [ -n "${LD_LIBRARY_PATH:-}" ]; then
               echo "LD_LIBRARY_PATH=${PWD}/${SNAPSHOT_DIR}/usr/lib:${LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
