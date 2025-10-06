@@ -15,7 +15,6 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.2.0"),
 		.package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
 		.package(url: "https://github.com/sushichop/Puppy.git", from: "0.9.0"),
-		.package(url: "https://github.com/apple/swift-atomics.git", from: "1.3.0"),
     ],
     targets: [
 		.target(
@@ -100,8 +99,7 @@ let package = Package(
 				"TextUserInterfaceApp",
 				"Editors",
 				"Utilities",
-				.product(name: "Logging", package: "swift-log"),
-				.product(name: "Atomics", package: "swift-atomics")
+				.product(name: "Logging", package: "swift-log")
 			],
 			resources: [
 				.process("Fixtures")
