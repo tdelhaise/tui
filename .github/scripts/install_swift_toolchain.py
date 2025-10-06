@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 import urllib.parse
@@ -12,21 +13,21 @@ TARGET_KEYS = {
 }
 
 
-def parse_metadata(path: Path) -> dict[str, str]:
+def parse_metadata(path: Path) -> tuple[dict[str, str], str]:
     result: dict[str, str] = {}
-    with path.open("r", encoding="utf-8") as handle:
-        for raw_line in handle:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if ":" not in line:
-                continue
-            key, value = line.split(":", 1)
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key not in result and value:
-                result[key] = value
-    return result
+    raw_text = path.read_text(encoding="utf-8")
+    for raw_line in raw_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key not in result and value:
+            result[key] = value
+    return result, raw_text
 
 
 def first_present(metadata: dict[str, str], aliases: list[str]) -> str | None:
@@ -46,11 +47,15 @@ def main(argv: list[str]) -> None:
     swift_cache, clang_cache = argv[5:7]
     github_path, github_env = argv[7:9]
 
-    metadata = parse_metadata(meta_path)
+    metadata, raw_text = parse_metadata(meta_path)
 
     download = first_present(metadata, TARGET_KEYS["download"])
     if not download:
-        raise SystemExit("Failed to locate Swift snapshot download name")
+        match = re.search(r"^download:\s*(\S.*)$", raw_text, re.MULTILINE)
+        if match:
+            download = match.group(1).strip().strip('"').strip("'")
+        if not download:
+            raise SystemExit("Failed to locate Swift snapshot download name")
 
     download_dir = first_present(metadata, TARGET_KEYS["download_dir"])
     if not download_dir:
@@ -62,11 +67,19 @@ def main(argv: list[str]) -> None:
             download_dir = base.removesuffix(f"-{platform}")
 
     if not download_dir:
-        raise SystemExit("Failed to determine Swift snapshot directory")
+        match = re.search(r"^(dir|download_dir|download_directory):\s*(\S.*)$", raw_text, re.MULTILINE)
+        if match:
+            download_dir = match.group(2).strip().strip('"').strip("'")
+        if not download_dir:
+            raise SystemExit("Failed to determine Swift snapshot directory")
 
     url = first_present(metadata, TARGET_KEYS["download_url"])
     if not url:
-        url = f"https://download.swift.org/{channel}/{platform}/{download_dir}/{download}"
+        match = re.search(r"^(download_url|url):\s*(\S.*)$", raw_text, re.MULTILINE)
+        if match:
+            url = match.group(2).strip().strip('"').strip("'")
+        if not url:
+            url = f"https://download.swift.org/{channel}/{platform}/{download_dir}/{download}"
     elif not urllib.parse.urlparse(url).scheme:
         url = f"https://download.swift.org{url}"
 
