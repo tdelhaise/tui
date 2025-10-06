@@ -16,15 +16,14 @@ final class AppTests: XCTestCase {
 		}
 
 		runOnMainActor(description: "override notification service") {
-			var received: NotificationPayload?
+			let expected = NotificationPayload(title: "Hello", message: "world")
 			let original = NotificationServices.shared()
 			NotificationServices.overrideWith(DummyService(onPost: { payload in
-				received = payload
+				XCTAssertEqual(payload.title, expected.title)
+				XCTAssertEqual(payload.message, expected.message)
 			}))
 			defer { NotificationServices.overrideWith(original) }
-			NotificationServices.shared().post(.init(title: "Hello", message: "world"))
-			XCTAssertEqual(received?.title, "Hello")
-			XCTAssertEqual(received?.message, "world")
+			NotificationServices.shared().post(expected)
 		}
 	}
 }
