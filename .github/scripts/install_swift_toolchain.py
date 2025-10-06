@@ -26,6 +26,13 @@ def strip_inline_comment(line: str) -> str:
     return line
 
 
+def print_debug(raw_text: str) -> None:
+    sys.stderr.write("\nMetadata preview (first 120 lines):\n")
+    for index, line in enumerate(raw_text.splitlines()[:120], start=1):
+        sys.stderr.write(f"{index:03d}: {line}\n")
+    sys.stderr.write("--- end preview ---\n")
+
+
 def parse_metadata(path: Path) -> tuple[dict[str, str], str]:
     result: dict[str, str] = {}
     raw_text = path.read_text(encoding="utf-8")
@@ -89,6 +96,7 @@ def main(argv: list[str]) -> None:
                     download = match.group(0)
                     break
         if not download:
+            print_debug(raw_text)
             raise SystemExit("Failed to locate Swift snapshot download name")
 
     download_dir = first_present(metadata, TARGET_KEYS["download_dir"])
@@ -105,6 +113,7 @@ def main(argv: list[str]) -> None:
         if match:
             download_dir = match.group(2).strip().strip('"').strip("'")
         if not download_dir:
+            print_debug(raw_text)
             raise SystemExit("Failed to determine Swift snapshot directory")
 
     url = first_present(metadata, TARGET_KEYS["download_url"])
