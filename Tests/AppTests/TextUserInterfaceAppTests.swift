@@ -13,8 +13,8 @@ final class TextUserInterfaceAppTests: XCTestCase {
 	}
 
 	func testMetaWordSequenceBackward() throws {
-		try runOnMainActor(description: #function) {
-			let app = makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 7)
+		try runOnMainActor(description: #function) { [self] in
+			let app = self.makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 7)
 			XCTAssertTrue(app._debugHandleMetaWordSequence("b"))
 			let buffer = try XCTUnwrap(app._debugBuffer())
 			XCTAssertEqual(buffer.cursorCol, 4)
@@ -23,8 +23,8 @@ final class TextUserInterfaceAppTests: XCTestCase {
 	}
 
 	func testMetaWordSequenceForwardWithSelection() throws {
-		try runOnMainActor(description: #function) {
-			let app = makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 0)
+		try runOnMainActor(description: #function) { [self] in
+			let app = self.makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 0)
 			XCTAssertTrue(app._debugHandleMetaWordSequence("F"))
 			let buffer = try XCTUnwrap(app._debugBuffer())
 			XCTAssertEqual(buffer.cursorCol, 3)
@@ -33,8 +33,8 @@ final class TextUserInterfaceAppTests: XCTestCase {
 	}
 
 	func testArrowEscapeSequenceOptionLeft() throws {
-		try runOnMainActor(description: #function) {
-			let app = makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 8)
+		try runOnMainActor(description: #function) { [self] in
+			let app = self.makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 8)
 			let sequence: [Int32] = [91, 49, 59, 51, 68] // "[1;3D"
 			XCTAssertTrue(app._debugHandleArrowEscapeSequence(sequence))
 			let buffer = try XCTUnwrap(app._debugBuffer())
@@ -44,8 +44,8 @@ final class TextUserInterfaceAppTests: XCTestCase {
 	}
 
 	func testArrowEscapeSequenceOptionShiftRightSelects() throws {
-		try runOnMainActor(description: #function) {
-			let app = makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 4)
+		try runOnMainActor(description: #function) { [self] in
+			let app = self.makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 4)
 			let sequence: [Int32] = [91, 49, 59, 52, 67] // "[1;4C"
 			XCTAssertTrue(app._debugHandleArrowEscapeSequence(sequence))
 			let buffer = try XCTUnwrap(app._debugBuffer())
@@ -56,13 +56,13 @@ final class TextUserInterfaceAppTests: XCTestCase {
 
 
 	func testArrowEscapeSequenceCursesKeyCodes() throws {
-		try runOnMainActor(description: #function) {
+		try runOnMainActor(description: #function) { [self] in
 			let optionLeftRaw: Int32 = 0x221
 			let optionRightRaw: Int32 = 0x230
 			let shiftOptionLeftRaw: Int32 = 0x222
 			let shiftOptionRightRaw: Int32 = 0x231
 
-			var app = makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 7)
+			var app = self.makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 7)
 			XCTAssertTrue(app._debugHandleArrowEscapeSequence([KEY_LEFT]))
 			var buffer = try XCTUnwrap(app._debugBuffer())
 			XCTAssertEqual(buffer.cursorCol, 4)
@@ -72,7 +72,7 @@ final class TextUserInterfaceAppTests: XCTestCase {
 			XCTAssertEqual(buffer.cursorCol, 7)
 			XCTAssertEqual(buffer.selectionLength(), 3)
 
-			app = makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 7)
+			app = self.makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 7)
 			XCTAssertTrue(app._debugHandleArrowEscapeSequence([optionLeftRaw]))
 			buffer = try XCTUnwrap(app._debugBuffer())
 			XCTAssertEqual(buffer.cursorCol, 4)
@@ -82,7 +82,7 @@ final class TextUserInterfaceAppTests: XCTestCase {
 			XCTAssertEqual(buffer.cursorCol, 7)
 			XCTAssertEqual(buffer.selectionLength(), 3)
 
-			app = makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 4)
+			app = self.makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 4)
 			XCTAssertTrue(app._debugHandleArrowEscapeSequence([optionRightRaw]))
 			buffer = try XCTUnwrap(app._debugBuffer())
 			XCTAssertEqual(buffer.cursorCol, 7)
@@ -96,8 +96,8 @@ final class TextUserInterfaceAppTests: XCTestCase {
 
 
 	func testArrowEscapeSequenceCursesVerticalKeyCodes() throws {
-		try runOnMainActor(description: #function) {
-			let app = makeApp(lines: ["foo", "bar", "baz"], cursorRow: 1, cursorCol: 1)
+		try runOnMainActor(description: #function) { [self] in
+			let app = self.makeApp(lines: ["foo", "bar", "baz"], cursorRow: 1, cursorCol: 1)
 			XCTAssertTrue(app._debugHandleArrowEscapeSequence([KEY_UP]))
 			var buffer = try XCTUnwrap(app._debugBuffer())
 			XCTAssertEqual(buffer.cursorRow, 0)
@@ -112,8 +112,8 @@ final class TextUserInterfaceAppTests: XCTestCase {
 	}
 
 	func testKeyInspectorCapturesMetaSequence() throws {
-		try runOnMainActor(description: #function) {
-			let app = makeApp(lines: ["foo bar"], cursorRow: 0, cursorCol: 7)
+		try runOnMainActor(description: #function) { [self] in
+			let app = self.makeApp(lines: ["foo bar"], cursorRow: 0, cursorCol: 7)
 			app._debugEnableInspector()
 			XCTAssertTrue(app._debugHandleEscapeSequence(codes: [Int32(98)]))
 			let notes = app._debugInspectorNotes()
@@ -122,8 +122,8 @@ final class TextUserInterfaceAppTests: XCTestCase {
 	}
 
 	func testKeyInspectorCapturesRawKeyCodes() throws {
-		try runOnMainActor(description: #function) {
-			let app = makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 4)
+		try runOnMainActor(description: #function) { [self] in
+			let app = self.makeApp(lines: ["foo bar baz"], cursorRow: 0, cursorCol: 4)
 			app._debugEnableInspector()
 			XCTAssertTrue(app._debugHandleArrowEscapeSequence([Int32(0x230)]))
 			let notes = app._debugInspectorNotes()
@@ -132,8 +132,8 @@ final class TextUserInterfaceAppTests: XCTestCase {
 	}
 
 	func testHandleEscapeSequenceDelegatesToMetaWord() throws {
-		try runOnMainActor(description: #function) {
-			let app = makeApp(lines: ["alpha beta"], cursorRow: 0, cursorCol: 5)
+		try runOnMainActor(description: #function) { [self] in
+			let app = self.makeApp(lines: ["alpha beta"], cursorRow: 0, cursorCol: 5)
 			XCTAssertTrue(app._debugHandleEscapeSequence(codes: [98]))
 			let buffer = try XCTUnwrap(app._debugBuffer())
 			XCTAssertEqual(buffer.cursorCol, 0)
@@ -141,8 +141,8 @@ final class TextUserInterfaceAppTests: XCTestCase {
 	}
 
 	func testHandleEscapeSequenceFallsBackToArrowSequence() throws {
-		try runOnMainActor(description: #function) {
-			let app = makeApp(lines: ["alpha beta"], cursorRow: 0, cursorCol: 5)
+		try runOnMainActor(description: #function) { [self] in
+			let app = self.makeApp(lines: ["alpha beta"], cursorRow: 0, cursorCol: 5)
 			let sequence: [Int32] = [91, 49, 59, 51, 68]
 			XCTAssertTrue(app._debugHandleEscapeSequence(codes: sequence))
 			let buffer = try XCTUnwrap(app._debugBuffer())
@@ -151,8 +151,8 @@ final class TextUserInterfaceAppTests: XCTestCase {
 	}
 
 	func testEscapeSequenceShiftDetection() throws {
-		try runOnMainActor(description: #function) {
-			let app = makeApp(lines: ["foo"], cursorRow: 0, cursorCol: 0)
+		try runOnMainActor(description: #function) { [self] in
+			let app = self.makeApp(lines: ["foo"], cursorRow: 0, cursorCol: 0)
 			XCTAssertTrue(app._debugEscapeSequenceHasShiftModifier("[1;4C"))
 			XCTAssertTrue(app._debugEscapeSequenceHasShiftModifier("[1;10D"))
 			XCTAssertFalse(app._debugEscapeSequenceHasShiftModifier("[1;3D"))
