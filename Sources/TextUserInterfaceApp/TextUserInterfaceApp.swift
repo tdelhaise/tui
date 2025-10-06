@@ -559,9 +559,11 @@ public final class TextUserInterfaceApp {
 			case KEY_RESIZE:
 				logger.info("key: \(hexString) aka \(key) aka KEY_RESIZE")
 				break
+#if os(Windows)
 			case KEY_EVENT:
 				logger.info("key: \(hexString) aka \(key) aka KEY_EVENT")
 				break
+#endif
 			default:
 				logger.info("key: \(hexString) aka \(key)")
 				break
