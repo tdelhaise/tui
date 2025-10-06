@@ -3,11 +3,11 @@ import XCTest
 @testable import Utilities
 
 final class AppTests: XCTestCase {
-    func testExample() {
-        XCTAssertTrue(true)
-    }
+	func testExample() {
+		XCTAssertTrue(true)
+	}
 
-	func testNotificationServiceOverride() {
+	func testNotificationServiceOverride() throws {
 		struct DummyService: NotificationService {
 			let onPost: @Sendable (NotificationPayload) -> Void
 			func post(_ payload: NotificationPayload) {
@@ -15,7 +15,7 @@ final class AppTests: XCTestCase {
 			}
 		}
 
-		runOnMainActor(description: "override notification service") {
+		try runOnMainActor(description: "override notification service") {
 			let expected = NotificationPayload(title: "Hello", message: "world")
 			let original = NotificationServices.shared()
 			NotificationServices.overrideWith(DummyService(onPost: { payload in
@@ -25,16 +25,5 @@ final class AppTests: XCTestCase {
 			defer { NotificationServices.overrideWith(original) }
 			NotificationServices.shared().post(expected)
 		}
-	}
-}
-
-private extension XCTestCase {
-	func runOnMainActor(description: String, timeout: TimeInterval = 2.0, _ operation: @escaping @MainActor () -> Void) {
-		let completion = expectation(description: description)
-		Task { @MainActor in
-			operation()
-			completion.fulfill()
-		}
-		wait(for: [completion], timeout: timeout)
 	}
 }

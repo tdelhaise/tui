@@ -56,7 +56,6 @@ final class EditorBufferTests: XCTestCase {
 		XCTAssertEqual(buffer.cursorRow, max(0, lines.count - 1))
 	}
 
-	@MainActor
 	func testSelectionCopyAndPaste() {
 		var buffer = EditorBuffer(lines: ["let foo", "bar baz"])
 		buffer.beginSelection()
