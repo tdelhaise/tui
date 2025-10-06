@@ -13,13 +13,31 @@ TARGET_KEYS = {
 }
 
 
+def strip_inline_comment(line: str) -> str:
+    in_single = False
+    in_double = False
+    for index, char in enumerate(line):
+        if char == "'" and not in_double:
+            in_single = not in_single
+        elif char == '"' and not in_single:
+            in_double = not in_double
+        elif char == "#" and not in_single and not in_double:
+            return line[:index]
+    return line
+
+
 def parse_metadata(path: Path) -> tuple[dict[str, str], str]:
     result: dict[str, str] = {}
     raw_text = path.read_text(encoding="utf-8")
     for raw_line in raw_text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
+        without_comment = strip_inline_comment(raw_line).rstrip()
+        line = without_comment.strip()
+        if not line:
             continue
+        if line.startswith("#"):
+            continue
+        if line.startswith("-"):
+            line = line.lstrip("- ")
         if ":" not in line:
             continue
         key, value = line.split(":", 1)
@@ -51,13 +69,25 @@ def main(argv: list[str]) -> None:
 
     download = first_present(metadata, TARGET_KEYS["download"])
     if not download:
-        match = re.search(r"^download:\s*(\S.*)$", raw_text, re.MULTILINE)
+        match = re.search(r"^\s*(?:-\s*)?download:\s*(\S.*)$", raw_text, re.MULTILINE)
         if match:
             download = match.group(1).strip().strip('"').strip("'")
         if not download:
-            match = re.search(r"swift-[\w-]+\.(pkg|tar\.gz)", raw_text)
-            if match:
-                download = match.group(0)
+            platform_pattern = re.escape(platform)
+            patterns = []
+            if runner_os == "macOS":
+                patterns.append(r"swift-[^\s'\"]+-osx\.pkg")
+            else:
+                patterns.append(rf"swift-[^\s'\"]+-{platform_pattern}\.tar\.gz")
+            patterns.extend([
+                r"swift-[^\s'\"]+\.pkg",
+                r"swift-[^\s'\"]+\.tar\.gz",
+            ])
+            for candidate in patterns:
+                match = re.search(candidate, raw_text)
+                if match:
+                    download = match.group(0)
+                    break
         if not download:
             raise SystemExit("Failed to locate Swift snapshot download name")
 
@@ -71,7 +101,7 @@ def main(argv: list[str]) -> None:
             download_dir = base.removesuffix(f"-{platform}")
 
     if not download_dir:
-        match = re.search(r"^(dir|download_dir|download_directory):\s*(\S.*)$", raw_text, re.MULTILINE)
+        match = re.search(r"^\s*(?:-\s*)?(dir|download_dir|download_directory):\s*(\S.*)$", raw_text, re.MULTILINE)
         if match:
             download_dir = match.group(2).strip().strip('"').strip("'")
         if not download_dir:
@@ -79,7 +109,7 @@ def main(argv: list[str]) -> None:
 
     url = first_present(metadata, TARGET_KEYS["download_url"])
     if not url:
-        match = re.search(r"^(download_url|url):\s*(\S.*)$", raw_text, re.MULTILINE)
+        match = re.search(r"^\s*(?:-\s*)?(download_url|url):\s*(\S.*)$", raw_text, re.MULTILINE)
         if match:
             url = match.group(2).strip().strip('"').strip("'")
         if not url:
