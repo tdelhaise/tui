@@ -55,6 +55,10 @@ def main(argv: list[str]) -> None:
         if match:
             download = match.group(1).strip().strip('"').strip("'")
         if not download:
+            match = re.search(r"swift-[\w-]+\.(pkg|tar\.gz)", raw_text)
+            if match:
+                download = match.group(0)
+        if not download:
             raise SystemExit("Failed to locate Swift snapshot download name")
 
     download_dir = first_present(metadata, TARGET_KEYS["download_dir"])
@@ -78,6 +82,10 @@ def main(argv: list[str]) -> None:
         match = re.search(r"^(download_url|url):\s*(\S.*)$", raw_text, re.MULTILINE)
         if match:
             url = match.group(2).strip().strip('"').strip("'")
+        if not url:
+            match = re.search(r"https://download\.swift\.org[^\s'\"]+", raw_text)
+            if match:
+                url = match.group(0)
         if not url:
             url = f"https://download.swift.org/{channel}/{platform}/{download_dir}/{download}"
     elif not urllib.parse.urlparse(url).scheme:
