@@ -1,20 +1,22 @@
 import Foundation
 import XCTest
 
+@MainActor
+private final class MainActorResultBox {
+	var result: Result<Void, Error>?
+}
+
 internal extension XCTestCase {
 	func runOnMainActor(description: String, timeout: TimeInterval = 2.0, _ operation: @escaping @MainActor () throws -> Void) throws {
-		final class OutcomeBox: @unchecked Sendable {
-			var result: Result<Void, Error>?
-		}
-
 		let expectation = expectation(description: description)
-		let box = OutcomeBox()
+		let box = MainActorResultBox()
 		Task { @MainActor in
 			box.result = Result { try operation() }
 			expectation.fulfill()
 		}
 		wait(for: [expectation], timeout: timeout)
-		switch box.result {
+		let result = MainActor.assumeIsolated { box.result }
+		switch result {
 		case .success?:
 			break
 		case .failure(let error)?:
