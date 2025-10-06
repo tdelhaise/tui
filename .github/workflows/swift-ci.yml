@@ -40,7 +40,7 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then
             PLATFORM=xcode
           else
-            PLATFORM=ubuntu24.04
+            PLATFORM=ubuntu2404
           fi
 
           META_FILE=$(mktemp)

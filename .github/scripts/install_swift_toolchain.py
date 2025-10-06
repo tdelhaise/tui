@@ -33,6 +33,27 @@ def print_debug(raw_text: str) -> None:
     sys.stderr.write("--- end preview ---\n")
 
 
+def platform_variants(platform: str) -> list[str]:
+    variants: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str) -> None:
+        if value not in seen:
+            variants.append(value)
+            seen.add(value)
+
+    add(platform)
+    if "." in platform:
+        add(platform.replace(".", ""))
+    else:
+        match = re.search(r"^(.*?)(\d{2})(\d{2})$", platform)
+        if match:
+            dotted = f"{match.group(1)}{match.group(2)}.{match.group(3)}"
+            add(dotted)
+
+    return variants
+
+
 def parse_metadata(path: Path) -> tuple[dict[str, str], str]:
     result: dict[str, str] = {}
     raw_text = path.read_text(encoding="utf-8")
@@ -73,6 +94,7 @@ def main(argv: list[str]) -> None:
     github_path, github_env = argv[7:9]
 
     metadata, raw_text = parse_metadata(meta_path)
+    platform_aliases = platform_variants(platform)
 
     download = first_present(metadata, TARGET_KEYS["download"])
     if not download:
@@ -80,12 +102,13 @@ def main(argv: list[str]) -> None:
         if match:
             download = match.group(1).strip().strip('"').strip("'")
         if not download:
-            platform_pattern = re.escape(platform)
             patterns = []
             if runner_os == "macOS":
                 patterns.append(r"swift-[^\s'\"]+-osx\.pkg")
             else:
-                patterns.append(rf"swift-[^\s'\"]+-{platform_pattern}\.tar\.gz")
+                for alias in platform_aliases:
+                    platform_pattern = re.escape(alias)
+                    patterns.append(rf"swift-[^\s'\"]+-{platform_pattern}\.tar\.gz")
             patterns.extend([
                 r"swift-[^\s'\"]+\.pkg",
                 r"swift-[^\s'\"]+\.tar\.gz",
@@ -106,7 +129,11 @@ def main(argv: list[str]) -> None:
             download_dir = base.removesuffix("-osx")
         else:
             base = download.removesuffix(".tar.gz")
-            download_dir = base.removesuffix(f"-{platform}")
+            for alias in platform_aliases:
+                candidate = base.removesuffix(f"-{alias}")
+                if candidate != base:
+                    download_dir = candidate
+                    break
 
     if not download_dir:
         match = re.search(r"^\s*(?:-\s*)?(dir|download_dir|download_directory):\s*(\S.*)$", raw_text, re.MULTILINE)
