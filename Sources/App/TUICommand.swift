@@ -53,31 +53,33 @@ struct TUICommand: AsyncParsableCommand {
 		logger.info("clangd     = \(clangd)")
 		logger.info("sourcekit  = \(sourcekit)")
 		let textUserInterfaceApp = TextUserInterfaceApp()
-		
-		/*
-		let languageServerProtocolClient = LanguageServerProtocolClient()
-		
-		// Try to start clangd (non-fatal if missing)
-		if FileManager.default.fileExists(atPath: clangd) {
-			try? await languageServerProtocolClient.start(config: .init(executablePath: clangd, arguments: []))
-			// Minimal initialize (not complete)
-			let initMsg: [String: Any] = [
-				"jsonrpc": "2.0",
-				"id": 1,
-				"method": "initialize",
-				"params": [
-					"processId": ProcessInfo.processInfo.processIdentifier,
-					"rootUri": URL(fileURLWithPath: FileManager.default.currentDirectoryPath).absoluteString,
-					"capabilities": [:]
-				]
-			]
-			await languageServerProtocolClient.send(json: initMsg)
-		} else {
-			Log.warn("clangd not found at \(clangd) — LSP C/C++ disabled for this run")
+		var startupStatus: String? = nil
+		var documentURL: URL? = nil
+		var initialBuffer = EditorBuffer()
+		if let fileToOpen {
+			let expandedPath = NSString(string: fileToOpen).expandingTildeInPath
+			let url = URL(fileURLWithPath: expandedPath)
+			documentURL = url
+			if FileManager.default.fileExists(atPath: url.path) {
+				do {
+					let contents = try String(contentsOf: url, encoding: .utf8)
+					initialBuffer = EditorBuffer(text: contents)
+					startupStatus = "Opened \(url.lastPathComponent)"
+				} catch {
+					logger.error("Failed to open \(url.path): \(error.localizedDescription)")
+					startupStatus = "Failed to open \(url.lastPathComponent): \(error.localizedDescription)"
+				}
+			} else {
+				startupStatus = "New file \(url.lastPathComponent)"
+			}
 		}
-		*/
-		let newEditorBuffer = EditorBuffer.init()
 		
-		textUserInterfaceApp.run(buffer: newEditorBuffer, diagsProvider: nil, enableKeyInspector: inspectKeys)
+		textUserInterfaceApp.run(
+			buffer: initialBuffer,
+			documentURL: documentURL,
+			diagsProvider: nil,
+			enableKeyInspector: inspectKeys,
+			startupStatus: startupStatus
+		)
 	}
 }

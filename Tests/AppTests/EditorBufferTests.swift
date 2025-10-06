@@ -18,6 +18,40 @@ final class EditorBufferTests: XCTestCase {
 		XCTAssertEqual(buffer.cursorRow, 0)
 		XCTAssertEqual(buffer.cursorCol, 0)
 	}
+
+	func testInitFromTextPreservesTrailingNewline() {
+		let buffer = EditorBuffer(text: "foo\nbar\n")
+		XCTAssertEqual(buffer.lines, ["foo", "bar", ""])
+		XCTAssertEqual(buffer.joinedLines(), "foo\nbar\n")
+	}
+
+	func testInitFromEmptyTextProvidesSingleLine() {
+		let buffer = EditorBuffer(text: "")
+		XCTAssertEqual(buffer.lines, [""])
+		XCTAssertEqual(buffer.joinedLines(), "")
+	}
+
+	func testFindNextRespectsCaseSensitivityAndWholeWord() {
+		let buffer = EditorBuffer(lines: ["Foo barbar", "foo bar"])
+		let start = EditorBuffer.Cursor(row: 0, column: 0)
+		let caseInsensitive = buffer.findNext(query: "foo", from: start, caseSensitive: false, wholeWord: true)
+		let caseSensitive = buffer.findNext(query: "foo", from: start, caseSensitive: true, wholeWord: true)
+		let partial = buffer.findNext(query: "bar", from: start, caseSensitive: true, wholeWord: true)
+		XCTAssertEqual(caseInsensitive?.normalized.start.row, 0)
+		XCTAssertEqual(caseInsensitive?.normalized.start.column, 0)
+		XCTAssertEqual(caseSensitive?.normalized.start.row, 1)
+		XCTAssertEqual(caseSensitive?.normalized.start.column, 0)
+		XCTAssertEqual(partial?.normalized.start.row, 1)
+		XCTAssertEqual(partial?.normalized.start.column, 4)
+	}
+
+	func testFindPreviousWrapsAroundBuffer() {
+		let buffer = EditorBuffer(lines: ["alpha", "beta", "gamma alpha"])
+		let start = EditorBuffer.Cursor(row: 0, column: 2)
+		let previous = buffer.findPrevious(query: "alpha", from: start, caseSensitive: true, wholeWord: true)
+		XCTAssertEqual(previous?.normalized.start.row, 2)
+		XCTAssertEqual(previous?.normalized.start.column, 6)
+	}
 	
 	func testWordNavigationAcrossLines() {
 		var buffer = EditorBuffer(lines: ["  foo bar", "baz quux"]) 

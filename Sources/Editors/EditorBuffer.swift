@@ -51,6 +51,11 @@ public struct EditorBuffer: Sendable {
 		self.clipboard = clipboard
 	}
 	
+	public init(text: String) {
+		let rawLines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+		self.init(lines: rawLines.isEmpty ? [text] : rawLines)
+	}
+	
 	public var cursor: Cursor {
 		Cursor(row: cursorRow, column: cursorCol)
 	}
@@ -190,9 +195,191 @@ public struct EditorBuffer: Sendable {
 		length += (end.row - start.row)
 		return length
 	}
+
+	public func joinedLines() -> String {
+		if lines.isEmpty { return "" }
+		return lines.joined(separator: "\n")
+	}
+
+	public func findNext(
+		query: String,
+		from start: Cursor,
+		caseSensitive: Bool,
+		wholeWord: Bool
+	) -> Selection? {
+		guard !query.isEmpty, !lines.isEmpty else { return nil }
+		let options: String.CompareOptions = caseSensitive ? [] : [.caseInsensitive]
+		let startRow = clampRow(start.row)
+		let startColumn = clampColumn(column: start.column, row: startRow)
+		if let match = findNextInRows(
+			query: query,
+			options: options,
+			rows: Array(startRow..<lines.count),
+			initialColumn: startColumn,
+			limitingRow: nil,
+			limitingColumn: nil,
+			wholeWord: wholeWord
+		) {
+			return match
+		}
+		if startRow > 0 || startColumn > 0 {
+			return findNextInRows(
+				query: query,
+				options: options,
+				rows: Array(0...startRow),
+				initialColumn: 0,
+				limitingRow: startRow,
+				limitingColumn: startColumn,
+				wholeWord: wholeWord
+			)
+		}
+		return nil
+	}
+
+	public func findPrevious(
+		query: String,
+		from start: Cursor,
+		caseSensitive: Bool,
+		wholeWord: Bool
+	) -> Selection? {
+		guard !query.isEmpty, !lines.isEmpty else { return nil }
+		let options: String.CompareOptions = caseSensitive ? [] : [.caseInsensitive]
+		let startRow = clampRow(start.row)
+		let startColumn = clampColumn(column: start.column, row: startRow)
+		let descendingRows = Array(0...startRow).reversed()
+		if let match = findPreviousInRows(
+			query: query,
+			options: options,
+			rows: Array(descendingRows),
+			initialMaxColumn: startColumn,
+			limitingRow: nil,
+			limitingColumn: nil,
+			wholeWord: wholeWord
+		) {
+			return match
+		}
+		if startRow < lines.count - 1 || startColumn < lines[startRow].count {
+			let wrapRows = Array(startRow..<lines.count).reversed()
+			return findPreviousInRows(
+				query: query,
+				options: options,
+				rows: Array(wrapRows),
+				initialMaxColumn: lines.last?.count ?? 0,
+				limitingRow: startRow,
+				limitingColumn: startColumn,
+				wholeWord: wholeWord
+			)
+		}
+		return nil
+	}
 	
 	// MARK: - Private helpers
-	
+
+	private func findNextInRows(
+		query: String,
+		options: String.CompareOptions,
+		rows: [Int],
+		initialColumn: Int,
+		limitingRow: Int?,
+		limitingColumn: Int?,
+		wholeWord: Bool
+	) -> Selection? {
+		for (index, row) in rows.enumerated() {
+			guard row >= 0 && row < lines.count else { continue }
+			let line = lines[row]
+			let startColumn = index == 0 ? initialColumn : 0
+			let clampedStart = clampColumn(column: startColumn, row: row)
+			let startIndex = stringIndex(in: line, column: clampedStart)
+			let endColumn = (limitingRow == row) ? limitingColumn : nil
+			let endIndex = endColumn.map { stringIndex(in: line, column: clampColumn(column: $0, row: row)) } ?? line.endIndex
+			if startIndex > endIndex { continue }
+			var searchRange = startIndex..<endIndex
+			while searchRange.lowerBound < searchRange.upperBound {
+				guard let range = line.range(of: query, options: options, range: searchRange) else { break }
+				if !wholeWord || isWholeWord(in: line, range: range) {
+					let start = line.distance(from: line.startIndex, to: range.lowerBound)
+					let end = line.distance(from: line.startIndex, to: range.upperBound)
+					let anchor = Cursor(row: row, column: start)
+					let head = Cursor(row: row, column: end)
+					return Selection(anchor: anchor, head: head)
+				}
+				searchRange = range.upperBound..<searchRange.upperBound
+			}
+		}
+		return nil
+	}
+
+	private func findPreviousInRows(
+		query: String,
+		options: String.CompareOptions,
+		rows: [Int],
+		initialMaxColumn: Int,
+		limitingRow: Int?,
+		limitingColumn: Int?,
+		wholeWord: Bool
+	) -> Selection? {
+		for (index, row) in rows.enumerated() {
+			guard row >= 0 && row < lines.count else { continue }
+			let line = lines[row]
+			let defaultMax = line.count
+			let maxColumn: Int
+			if index == 0 {
+				maxColumn = clampColumn(column: initialMaxColumn, row: row)
+			} else if let limitingRow, limitingRow == row {
+				maxColumn = clampColumn(column: limitingColumn ?? defaultMax, row: row)
+			} else {
+				maxColumn = defaultMax
+			}
+			guard maxColumn > 0 else { continue }
+			let endIndex = stringIndex(in: line, column: maxColumn)
+			let matchRange = findPreviousMatch(in: line, query: query, options: options, endIndex: endIndex, wholeWord: wholeWord)
+			if let range = matchRange {
+				let start = line.distance(from: line.startIndex, to: range.lowerBound)
+				let end = line.distance(from: line.startIndex, to: range.upperBound)
+				let anchor = Cursor(row: row, column: start)
+				let head = Cursor(row: row, column: end)
+				return Selection(anchor: anchor, head: head)
+			}
+		}
+		return nil
+	}
+
+	private func findPreviousMatch(
+		in line: String,
+		query: String,
+		options: String.CompareOptions,
+		endIndex: String.Index,
+		wholeWord: Bool
+	) -> Range<String.Index>? {
+		var searchRange = line.startIndex..<endIndex
+		var candidate: Range<String.Index>? = nil
+		while searchRange.lowerBound < searchRange.upperBound {
+			guard let range = line.range(of: query, options: options, range: searchRange) else { break }
+			if !wholeWord || isWholeWord(in: line, range: range) {
+				candidate = range
+			}
+			if range.lowerBound <= searchRange.lowerBound { break }
+			searchRange = searchRange.lowerBound..<range.lowerBound
+		}
+		return candidate
+	}
+
+	private func isWholeWord(in line: String, range: Range<String.Index>) -> Bool {
+		if range.lowerBound > line.startIndex {
+			let beforeIndex = line.index(before: range.lowerBound)
+			if isWordCharacter(line[beforeIndex]) { return false }
+		}
+		if range.upperBound < line.endIndex {
+			let afterChar = line[range.upperBound]
+			if isWordCharacter(afterChar) { return false }
+		}
+		return true
+	}
+
+	private func isWordCharacter(_ character: Character) -> Bool {
+		character.isLetter || character.isNumber || character == "_"
+	}
+
 	private mutating func updateSelection(from previous: Cursor, selecting: Bool) {
 		let current = cursor
 		if selecting {

@@ -31,9 +31,50 @@ public final class TextUserInterfaceApp {
 		var entries: [KeyInspectorEntry]
 	}
 
+	private struct SearchConfiguration: Equatable {
+		var query: String
+		var caseSensitive: Bool
+		var wholeWord: Bool
+	}
+
+	private struct SearchModeState {
+		var origin: EditorBuffer.Cursor
+		var config: SearchConfiguration
+	}
+
+	private struct CommandPaletteState {
+		var query: String
+	}
+
+	private enum InputMode {
+		case normal
+		case search(SearchModeState)
+		case commandPalette(CommandPaletteState)
+	}
+
+	private enum SearchDirection {
+		case forward
+		case backward
+	}
+
+	private enum KeyHandlerOutcome {
+		case unhandled
+		case handled(inspectorNote: String?)
+	}
+
 	private let inspectorCapacity = 6
 	private let inspectorPanelHeight: Int32 = 8
 	private var keyInspector: KeyInspectorState
+	private var documentURL: URL?
+	private var isDirty: Bool = false
+	private var startupStatusMessage: String?
+	private var inputMode: InputMode = .normal
+	private var lastSearch: SearchConfiguration?
+	private var lastSearchDirection: SearchDirection = .forward
+	private var navigationBack: [EditorBuffer.Cursor] = []
+	private var navigationForward: [EditorBuffer.Cursor] = []
+	private let navigationHistoryLimit = 128
+	private var suppressHistoryRecording = false
 
 	// éventuellement:
 	private weak var diagsProvider: DiagnosticsProvider?
@@ -54,11 +95,25 @@ public final class TextUserInterfaceApp {
 		return level
 	}
 	
-	public func run(buffer: EditorBuffer?, diagsProvider: DiagnosticsProvider?, enableKeyInspector: Bool = false) {
-		self.buffer = buffer
+	public func run(
+		buffer: EditorBuffer?,
+		documentURL: URL? = nil,
+		diagsProvider: DiagnosticsProvider?,
+		enableKeyInspector: Bool = false,
+		startupStatus: String? = nil
+	) {
+		self.buffer = buffer ?? EditorBuffer()
+		self.documentURL = documentURL
+		self.isDirty = false
+		self.inputMode = .normal
+		self.lastSearch = nil
+		self.lastSearchDirection = .forward
+		navigationBack.removeAll(keepingCapacity: true)
+		navigationForward.removeAll(keepingCapacity: true)
 		self.diagsProvider = diagsProvider
 		keyInspector.isEnabled = enableKeyInspector
 		keyInspector.entries.removeAll(keepingCapacity: true)
+		startupStatusMessage = startupStatus
 		
 		initscr()
 		defer { endwin() }
@@ -80,6 +135,10 @@ public final class TextUserInterfaceApp {
 		var diagHeight: Int32 = 8
 		var running = true
 		
+		if let startupStatusMessage {
+			statusMessage = startupStatusMessage
+			self.startupStatusMessage = nil
+		}
 		while running {
 			erase()
 			
@@ -93,7 +152,8 @@ public final class TextUserInterfaceApp {
 				editorRows = max(5, editorRows - diagHeight)
 			}
 			
-			put(0, 0, "tui — q/ESC:quit  arrows:move  Shift+arrows:select  Home/End  PgUp/PgDn  v:select  y:copy  x:cut  p:paste  d:diag")
+			let header = headerLine(maxWidth: Int(cols))
+			putCleared(0, 0, header)
 			mvhline(1, 0, 0, cols)
 			
 			if let buf = buffer {
@@ -113,6 +173,26 @@ public final class TextUserInterfaceApp {
 			let hexString = String(format:"%08X", key)
 			let asciiSummary = asciiLabel(for: key)
 			var inspectorNote: String? = nil
+			switch handleSearchInput(key: key, ascii: asciiSummary) {
+			case .handled(let note):
+				if let note { inspectorNote = note }
+				if let noteToRecord = inspectorNote ?? note {
+					recordKeyInspector(key: key, ascii: asciiSummary, note: noteToRecord)
+				}
+				continue
+			case .unhandled:
+				break
+			}
+			switch handleCommandPaletteInput(key: key, ascii: asciiSummary) {
+			case .handled(let note):
+				if let note { inspectorNote = note }
+				if let noteToRecord = inspectorNote ?? note {
+					recordKeyInspector(key: key, ascii: asciiSummary, note: noteToRecord)
+				}
+				continue
+			case .unhandled:
+				break
+			}
 			
 			switch key {
 			case 27, 113:
@@ -211,6 +291,14 @@ public final class TextUserInterfaceApp {
 				logger.info("key: \(hexString) aka \(key) aka ???")
 				inspectorNote = "toggle diagnostics"
 				diagHeight = (diagHeight == 0) ? 8 : 0
+			case 19: // Ctrl+S
+				logger.info("key: \(hexString) aka \(key) aka Ctrl+S")
+				inspectorNote = "save"
+				if saveDocument() {
+					notify(title: "File Saved", message: documentDisplayName(), kind: .success, metadata: saveMetadata())
+				} else {
+					notify(title: "Save Failed", message: statusMessage, kind: .warning, metadata: saveMetadata())
+				}
 			case 112, 80:
 				logger.info("key: \(hexString) aka \(key) aka 112,80")
 				inspectorNote = "paste clipboard"
@@ -298,10 +386,14 @@ public final class TextUserInterfaceApp {
 				break
 			case KEY_F0+6:
 				logger.info("key: \(hexString) aka \(key) aka KEY_F7")
-				break
+				if navigateBack() {
+					inspectorNote = "nav back"
+				}
 			case KEY_F0+7:
 				logger.info("key: \(hexString) aka \(key) aka KEY_F8")
-				break
+				if navigateForward() {
+					inspectorNote = "nav forward"
+				}
 			case KEY_F0+8:
 				logger.info("key: \(hexString) aka \(key) aka KEY_F9")
 				break
@@ -575,29 +667,367 @@ public final class TextUserInterfaceApp {
 
 			let keyInfo = "key: \(ch)"
 			putCleared(rows - 2, 2, keyInfo)
-			var footer = "q/ESC to quit"
+			var footerParts: [String] = [documentDisplayName()]
 			if let buf = buffer {
-				footer = "pos \(buf.cursorRow + 1):\(buf.cursorCol + 1)"
+				var cursorInfo = "pos \(buf.cursorRow + 1):\(buf.cursorCol + 1)"
 				if let selectionLength = buf.selectionLength() {
-					footer += "  sel=\(selectionLength)"
+					cursorInfo += "  sel=\(selectionLength)"
 				}
-				footer += "  q/ESC to quit"
+				footerParts.append(cursorInfo)
 			}
+			if let searchSummary = searchPromptFooter() {
+				footerParts.append(searchSummary)
+			}
+			if let paletteSummary = commandPaletteFooter() {
+				footerParts.append(paletteSummary)
+			}
+			footerParts.append("q/ESC to quit")
 			if !statusMessage.isEmpty {
-				footer += "  " + statusMessage
+				footerParts.append(statusMessage)
 			}
-			putCleared(rows - 1, 2, footer)
+			let footer = footerParts.joined(separator: "  ")
+			let footerWidth = max(0, Int(cols) - 4)
+			putCleared(rows - 1, 2, TextWidth.clip(footer, max: footerWidth))
 			statusMessage = ""
 		}
 	}
 	
 	private func mutateBuffer(_ body: (inout EditorBuffer) -> String?) {
 		guard var buf = buffer else { return }
+		let previousLines = buf.lines
 		let message = body(&buf)
+		let linesChanged = buf.lines != previousLines
 		buffer = buf
+		if linesChanged {
+			isDirty = true
+		}
 		if let message {
 			statusMessage = message
 		}
+	}
+
+	private func handleSearchInput(key: Int32, ascii: String) -> KeyHandlerOutcome {
+		switch inputMode {
+		case .search(var state):
+			var inspector: String? = nil
+			var stateChanged = false
+			switch key {
+			case 27:
+				cancelSearch(state: state)
+				return .handled(inspectorNote: "search cancel")
+			case KEY_ENTER, 10, 13:
+				if commitSearch(state: state) {
+					return .handled(inspectorNote: "search commit")
+				} else {
+					inspector = "search no match"
+				}
+			case KEY_BACKSPACE, 127, 8:
+				if !state.config.query.isEmpty {
+					state.config.query.removeLast()
+					stateChanged = true
+				}
+				updateSearchPreview(for: &state)
+				inspector = "search backspace"
+			case 20: // Ctrl+T toggle case sensitivity
+				state.config.caseSensitive.toggle()
+				stateChanged = true
+				updateSearchPreview(for: &state)
+				inspector = state.config.caseSensitive ? "search case:on" : "search case:off"
+			case 23: // Ctrl+W toggle whole word
+				state.config.wholeWord.toggle()
+				stateChanged = true
+				updateSearchPreview(for: &state)
+				inspector = state.config.wholeWord ? "search word:on" : "search word:off"
+			default:
+				if key >= 32 && key < 127, let scalar = UnicodeScalar(Int(key)) {
+					state.config.query.append(Character(scalar))
+					stateChanged = true
+					updateSearchPreview(for: &state)
+					inspector = "search append"
+				} else {
+					return .handled(inspectorNote: nil)
+				}
+			}
+			if stateChanged {
+				inputMode = .search(state)
+			}
+			return .handled(inspectorNote: inspector)
+		case .normal:
+			if key == 47 { // '/'
+				enterSearchMode()
+				return .handled(inspectorNote: "search mode")
+			}
+			if key == 110 { // 'n'
+				let success = repeatSearch(.forward)
+				return .handled(inspectorNote: success ? "search next" : "search next missing")
+			}
+			if key == 78 { // 'N'
+				let success = repeatSearch(.backward)
+				return .handled(inspectorNote: success ? "search previous" : "search previous missing")
+			}
+			return .unhandled
+		case .commandPalette:
+			return .unhandled
+		}
+	}
+
+	private func enterSearchMode() {
+		let origin = buffer?.cursor ?? EditorBuffer.Cursor(row: 0, column: 0)
+		let reuse = lastSearch ?? SearchConfiguration(query: "", caseSensitive: false, wholeWord: false)
+		var state = SearchModeState(origin: origin, config: reuse)
+		inputMode = .search(state)
+		updateSearchPreview(for: &state)
+		inputMode = .search(state)
+		statusMessage = "Search: Enter=jump Esc=cancel Ctrl+T=case Ctrl+W=word"
+	}
+
+	private func handleCommandPaletteInput(key: Int32, ascii: String) -> KeyHandlerOutcome {
+		switch inputMode {
+		case .commandPalette(var state):
+			var note: String? = nil
+			var stateChanged = false
+			switch key {
+			case 27:
+				inputMode = .normal
+				statusMessage = "Command palette closed"
+				note = "palette cancel"
+			case KEY_ENTER, 10, 13:
+				statusMessage = "Command palette stub — no commands yet"
+				inputMode = .normal
+				note = "palette run"
+			case KEY_BACKSPACE, 127, 8:
+				if !state.query.isEmpty {
+					state.query.removeLast()
+					stateChanged = true
+				}
+				note = "palette backspace"
+			default:
+				if key >= 32 && key < 127, let scalar = UnicodeScalar(Int(key)) {
+					state.query.append(Character(scalar))
+					stateChanged = true
+					note = "palette append"
+				} else {
+					note = nil
+				}
+			}
+			if stateChanged {
+				inputMode = .commandPalette(state)
+			}
+			return .handled(inspectorNote: note)
+		case .normal:
+			if key == 58 { // ':'
+				openCommandPalette()
+				return .handled(inspectorNote: "palette open")
+			}
+			return .unhandled
+		case .search:
+			return .unhandled
+		}
+	}
+
+	private func openCommandPalette() {
+		inputMode = .commandPalette(CommandPaletteState(query: ""))
+		statusMessage = "Command palette (stub). Enter=run Esc=cancel"
+	}
+
+	private func updateSearchPreview(for state: inout SearchModeState) {
+		guard let buf = buffer else { return }
+		if state.config.query.isEmpty {
+			mutateBuffer { buffer in
+				buffer.moveCursorTo(row: state.origin.row, column: state.origin.column)
+				buffer.clearSelection()
+				return nil
+			}
+			return
+		}
+		if let match = buf.findNext(
+			query: state.config.query,
+			from: state.origin,
+			caseSensitive: state.config.caseSensitive,
+			wholeWord: state.config.wholeWord
+		) {
+			applySelection(match)
+		} else {
+			mutateBuffer { buffer in
+				buffer.moveCursorTo(row: state.origin.row, column: state.origin.column)
+				buffer.clearSelection()
+				return nil
+			}
+			statusMessage = "No match for \"\(state.config.query)\""
+		}
+	}
+
+	private func commitSearch(state: SearchModeState) -> Bool {
+		let success = executeSearch(
+			direction: .forward,
+			config: state.config,
+			start: state.origin,
+			recordOrigin: state.origin,
+			setLastSearch: true
+		)
+		if success {
+			inputMode = .normal
+		}
+		return success
+	}
+
+	private func cancelSearch(state: SearchModeState) {
+		mutateBuffer { buffer in
+			buffer.moveCursorTo(row: state.origin.row, column: state.origin.column)
+			buffer.clearSelection()
+			return "Search cancelled"
+		}
+		inputMode = .normal
+	}
+
+	private func repeatSearch(_ direction: SearchDirection) -> Bool {
+		guard let config = lastSearch else {
+			statusMessage = "No previous search"
+			return false
+		}
+		guard let current = buffer?.cursor else { return false }
+		let start = searchStartCursor(for: direction, config: config)
+		let success = executeSearch(
+			direction: direction,
+			config: config,
+			start: start,
+			recordOrigin: current,
+			setLastSearch: false
+		)
+		return success
+	}
+
+	@discardableResult
+	private func executeSearch(
+		direction: SearchDirection,
+		config: SearchConfiguration,
+		start: EditorBuffer.Cursor,
+		recordOrigin: EditorBuffer.Cursor?,
+		setLastSearch: Bool
+	) -> Bool {
+		guard let buf = buffer else { return false }
+		let selection: EditorBuffer.Selection?
+		switch direction {
+		case .forward:
+			selection = buf.findNext(
+				query: config.query,
+				from: start,
+				caseSensitive: config.caseSensitive,
+				wholeWord: config.wholeWord
+			)
+		case .backward:
+			selection = buf.findPrevious(
+				query: config.query,
+				from: start,
+				caseSensitive: config.caseSensitive,
+				wholeWord: config.wholeWord
+			)
+		}
+		guard let match = selection else {
+			statusMessage = "No match for \"\(config.query)\""
+			return false
+		}
+		if let origin = recordOrigin {
+			recordNavigationSnapshot(origin)
+		}
+		applySelection(match)
+		statusMessage = "Match for \"\(config.query)\""
+		lastSearchDirection = direction
+		if setLastSearch {
+			lastSearch = config
+		}
+		return true
+	}
+
+	private func recordNavigationSnapshot(_ cursor: EditorBuffer.Cursor) {
+		if let last = navigationBack.last, last == cursor { return }
+		navigationBack.append(cursor)
+		if navigationBack.count > navigationHistoryLimit {
+			navigationBack.removeFirst(navigationBack.count - navigationHistoryLimit)
+		}
+		navigationForward.removeAll(keepingCapacity: true)
+	}
+
+	private func applySelection(_ selection: EditorBuffer.Selection) {
+		let normalized = selection.normalized
+		mutateBuffer { buffer in
+			buffer.moveCursorTo(row: normalized.start.row, column: normalized.start.column)
+			buffer.beginSelection()
+			buffer.moveCursorTo(row: normalized.end.row, column: normalized.end.column, selecting: true)
+			return nil
+		}
+	}
+
+	private func searchPromptFooter() -> String? {
+		guard case .search(let state) = inputMode else { return nil }
+		let queryDisplay = state.config.query.isEmpty ? "<empty>" : state.config.query
+		let caseIndicator = state.config.caseSensitive ? "Aa:on" : "Aa:off"
+		let wordIndicator = state.config.wholeWord ? "W:on" : "W:off"
+		return "/\(queryDisplay)  \(caseIndicator)  \(wordIndicator)  Enter:jump Esc:cancel Ctrl+T:case Ctrl+W:word"
+	}
+
+	private func commandPaletteFooter() -> String? {
+		guard case .commandPalette(let state) = inputMode else { return nil }
+		let display = state.query.isEmpty ? "<type to filter>" : state.query
+		return ": \(display)  Enter:run Esc:cancel"
+	}
+
+	private func currentSelectionMatches(_ config: SearchConfiguration) -> Bool {
+		guard let selected = buffer?.selectedText(), !selected.isEmpty else { return false }
+		if config.caseSensitive {
+			return selected == config.query
+		}
+		return selected.compare(config.query, options: .caseInsensitive) == .orderedSame
+	}
+
+	private func searchStartCursor(for direction: SearchDirection, config: SearchConfiguration) -> EditorBuffer.Cursor {
+		guard let buf = buffer else { return EditorBuffer.Cursor(row: 0, column: 0) }
+		if currentSelectionMatches(config), let selection = buf.selection?.normalized {
+			switch direction {
+			case .forward:
+				return selection.end
+			case .backward:
+				return selection.start
+			}
+		}
+		return buf.cursor
+	}
+
+	private func navigateBack() -> Bool {
+		guard let destination = navigationBack.popLast() else {
+			statusMessage = "No earlier location"
+			return false
+		}
+		guard let current = buffer?.cursor else { return false }
+		navigationForward.append(current)
+		if navigationForward.count > navigationHistoryLimit {
+			navigationForward.removeFirst(navigationForward.count - navigationHistoryLimit)
+		}
+		mutateBuffer { buffer in
+			buffer.clearSelection()
+			buffer.moveCursorTo(row: destination.row, column: destination.column)
+			return "History back \(destination.row + 1):\(destination.column + 1)"
+		}
+		return true
+	}
+
+	private func navigateForward() -> Bool {
+		guard let destination = navigationForward.popLast() else {
+			statusMessage = "No forward location"
+			return false
+		}
+		if let current = buffer?.cursor {
+			navigationBack.append(current)
+			if navigationBack.count > navigationHistoryLimit {
+				navigationBack.removeFirst(navigationBack.count - navigationHistoryLimit)
+			}
+		}
+		mutateBuffer { buffer in
+			buffer.clearSelection()
+			buffer.moveCursorTo(row: destination.row, column: destination.column)
+			return "History forward \(destination.row + 1):\(destination.column + 1)"
+		}
+		return true
 	}
 
 	private func recordKeyInspector(key: Int32, ascii: String, note: String) {
@@ -658,6 +1088,48 @@ public final class TextUserInterfaceApp {
 		if text.count <= limit { return text }
 		let prefix = text.prefix(limit)
 		return String(prefix) + "..."
+	}
+
+	private func headerLine(maxWidth: Int) -> String {
+		guard maxWidth > 0 else { return "" }
+		let docName = documentDisplayName()
+		let shortcuts = "  Ctrl+S:save  /:search  :palette  n/N:repeat  F7/F8:nav  q/ESC:quit  arrows:move  Shift+arrows:select  Home/End  PgUp/PgDn  v:select  y:copy  x:cut  p:paste  d:diag"
+		let header = "tui — \(docName)\(shortcuts)"
+		return TextWidth.clip(header, max: maxWidth)
+	}
+
+	private func documentDisplayName() -> String {
+		let base = documentURL?.lastPathComponent ?? "untitled"
+		return isDirty ? base + "*" : base
+	}
+
+	private func saveDocument() -> Bool {
+		guard let currentBuffer = buffer else {
+			statusMessage = "No buffer to save"
+			return false
+		}
+		guard let url = documentURL else {
+			statusMessage = "No file path. Save As not yet implemented"
+			return false
+		}
+		do {
+			let text = currentBuffer.joinedLines()
+			try text.write(to: url, atomically: true, encoding: .utf8)
+			isDirty = false
+			statusMessage = "Saved \(url.lastPathComponent)"
+			return true
+		} catch {
+			statusMessage = "Save failed: \(error.localizedDescription)"
+			return false
+		}
+	}
+
+	private func saveMetadata() -> [String: String] {
+		var metadata: [String: String] = ["dirty": isDirty ? "true" : "false"]
+		if let url = documentURL {
+			metadata["path"] = url.path
+		}
+		return metadata
 	}
 
 	private func putCleared(_ y: Int32, _ x: Int32, _ s: String) {
@@ -1037,6 +1509,76 @@ extension TextUserInterfaceApp {
 
 	func _debugEscapeSequenceHasShiftModifier(_ sequence: String) -> Bool {
 		escapeSequenceHasShiftModifier(sequence)
+	}
+
+	func _debugSetDocumentURL(_ url: URL?) {
+		documentURL = url
+	}
+
+	func _debugDocumentURL() -> URL? {
+		documentURL
+	}
+
+	func _debugIsDirty() -> Bool {
+		isDirty
+	}
+
+	func _debugMarkDirty(_ dirty: Bool) {
+		isDirty = dirty
+	}
+
+	@discardableResult
+	func _debugSaveDocument() -> Bool {
+		saveDocument()
+	}
+
+	@discardableResult
+	func _debugHandleSearchKey(_ key: Int32) -> Bool {
+		let outcome = handleSearchInput(key: key, ascii: asciiLabel(for: key))
+		if case .handled = outcome { return true }
+		return false
+	}
+
+	func _debugIsSearchMode() -> Bool {
+		if case .search = inputMode { return true }
+		return false
+	}
+
+	func _debugLastSearchQuery() -> String? {
+		lastSearch?.query
+	}
+
+	func _debugNavigationDepths() -> (back: Int, forward: Int) {
+		(navigationBack.count, navigationForward.count)
+	}
+
+	@discardableResult
+	func _debugNavigateBack() -> Bool {
+		navigateBack()
+	}
+
+	@discardableResult
+	func _debugNavigateForward() -> Bool {
+		navigateForward()
+	}
+
+	@discardableResult
+	func _debugHandleCommandKey(_ key: Int32) -> Bool {
+		let outcome = handleCommandPaletteInput(key: key, ascii: asciiLabel(for: key))
+		if case .handled = outcome { return true }
+		return false
+	}
+
+	func _debugIsCommandPaletteMode() -> Bool {
+		if case .commandPalette = inputMode { return true }
+		return false
+	}
+
+	func _debugCommandPaletteQuery() -> String? {
+		if case .commandPalette(let state) = inputMode {
+			return state.query
+		}
+		return nil
 	}
 }
 #endif

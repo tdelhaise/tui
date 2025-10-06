@@ -19,12 +19,16 @@ History favours compact, descriptive commit titles (e.g. “First build that wor
 macOS builds link against `ncurses`, while Linux uses `ncursesw`; ensure those packages exist before running `swift build`. For LSP features, validate the `--clangd` and `--sourcekit` paths locally and stub them in CI to avoid blocking the main command. Keep locale-aware behaviour in mind when handling text rendering.
 
 ## UI Shortcuts
+- `Ctrl+S` saves the active buffer to its backing file; invocation with `swift run tui path/to/file` seeds the document path.
+- `/` enters the incremental search prompt. Use `Ctrl+T` to toggle case sensitivity, `Ctrl+W` to constrain whole words, `Enter` to jump, `Esc` to cancel, and `n`/`N` to repeat the search forward/backward.
+- `:` opens the command palette stub for future integrations; type to filter, press `Enter` to acknowledge the placeholder, or `Esc` to close.
+- `F7` steps back through the navigation history and `F8` steps forward. The footer reflects history state when active.
 - `Shift+Arrow` extends the selection while moving; plain arrows clear the selection.
 - `Home`/`End` (and their Shift variants) jump to the start/end of the current line.
 - `v` toggles selection anchoring at the cursor, `y` copies, `x` cuts, and `p` pastes using the in-memory clipboard.
 - `Option+Arrow` (or `Option+f`/`Option+b`) hops whole words; add Shift to grow a word-sized selection.
 - Copy/cut/paste emit notifications via `NotificationServices` (osascript on macOS, `notify-send` on Linux); override the service in tests to avoid spawning processes.
-- Status bar displays cursor position and selection length; ensure updates stay under the terminal width.
+- Status bar displays cursor position, selection length, and any active overlays; ensure updates stay under the terminal width.
 
 ## Milestone Playbooks
 - **M0 — Editor Baseline**: extend `Sources/Editors/EditorBuffer.swift` with cursor movement helpers (line/word/buffer jumps), selection and copy/paste buffers, and integrate scroll tracking with `TextUserInterfaceApp`. Add regression tests in `Tests/AppTests` covering boundary navigation, UTF-8 handling, and viewport clamping.
