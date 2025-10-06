@@ -7,8 +7,7 @@ final class AppTests: XCTestCase {
         XCTAssertTrue(true)
     }
 
-    @MainActor
-    func testNotificationServiceOverride() {
+	func testNotificationServiceOverride() {
         struct DummyService: NotificationService {
             let onPost: (NotificationPayload) -> Void
             func post(_ payload: NotificationPayload) {
