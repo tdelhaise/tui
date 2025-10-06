@@ -22,6 +22,12 @@ struct TUICommand: AsyncParsableCommand {
 
 	@Flag(name: .long, help: "Show the live key inspector overlay.")
 	var inspectKeys: Bool = false
+
+	@Option(name: .long, help: "Theme preset to use (default, high-contrast).")
+	var theme: ThemeOption = .default
+
+	@Option(name: .long, help: "Keymap preset to use (standard, alternate).")
+	var keymap: KeymapOption = .standard
 	
 	public mutating func run() async throws {
 		
@@ -52,7 +58,9 @@ struct TUICommand: AsyncParsableCommand {
 		logger.info("fileToOpen = \(fileToOpen ?? "NONE")")
 		logger.info("clangd     = \(clangd)")
 		logger.info("sourcekit  = \(sourcekit)")
-		let textUserInterfaceApp = TextUserInterfaceApp()
+		logger.info("theme      = \(theme.rawValue)")
+		logger.info("keymap     = \(keymap.rawValue)")
+		let textUserInterfaceApp = TextUserInterfaceApp(theme: theme.theme, keymap: keymap.keymap, enableKeyInspector: inspectKeys)
 		var startupStatus: String? = nil
 		var documentURL: URL? = nil
 		var initialBuffer = EditorBuffer()
@@ -81,5 +89,33 @@ struct TUICommand: AsyncParsableCommand {
 			enableKeyInspector: inspectKeys,
 			startupStatus: startupStatus
 		)
+	}
+
+	enum ThemeOption: String, ExpressibleByArgument {
+		case `default`
+		case highContrast = "high-contrast"
+
+		var theme: TUITheme {
+			switch self {
+			case .default:
+				return .default
+			case .highContrast:
+				return .highContrast
+			}
+		}
+	}
+
+	enum KeymapOption: String, ExpressibleByArgument {
+		case standard
+		case alternate
+
+		var keymap: TUIKeymap {
+			switch self {
+			case .standard:
+				return .standard
+			case .alternate:
+				return .alternate
+			}
+		}
 	}
 }

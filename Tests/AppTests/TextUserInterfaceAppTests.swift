@@ -231,6 +231,55 @@ final class TextUserInterfaceAppTests: XCTestCase {
 		}
 	}
 
+	func testCommandPaletteWriteSavesExistingDocument() throws {
+		try runOnMainActor(description: #function) {
+			let tempURL = FileManager.default.temporaryDirectory
+				.appendingPathComponent(UUID().uuidString)
+				.appendingPathExtension("txt")
+			defer { try? FileManager.default.removeItem(at: tempURL) }
+			try "old".write(to: tempURL, atomically: true, encoding: .utf8)
+			let app = TextUserInterfaceApp()
+			app._debugSetBuffer(EditorBuffer(lines: ["updated"], cursorRow: 0, cursorCol: 0))
+			app._debugSetDocumentURL(tempURL)
+			app._debugMarkDirty(true)
+			XCTAssertTrue(app._debugHandleCommandKey(58))
+			for char in "write" {
+				let value = Int32(char.asciiValue!)
+				XCTAssertTrue(app._debugHandleCommandKey(value))
+			}
+			XCTAssertTrue(app._debugHandleCommandKey(10))
+			XCTAssertFalse(app._debugIsCommandPaletteMode())
+			let contents = try String(contentsOf: tempURL, encoding: .utf8)
+			XCTAssertEqual(contents, "updated")
+			XCTAssertFalse(app._debugIsDirty())
+		}
+	}
+
+	func testCommandPaletteWriteWithPathPerformsSaveAs() throws {
+		try runOnMainActor(description: #function) {
+			let tempURL = FileManager.default.temporaryDirectory
+				.appendingPathComponent(UUID().uuidString)
+				.appendingPathExtension("txt")
+			defer { try? FileManager.default.removeItem(at: tempURL) }
+			let app = TextUserInterfaceApp()
+			app._debugSetBuffer(EditorBuffer(lines: ["new file"], cursorRow: 0, cursorCol: 0))
+			app._debugMarkDirty(true)
+			XCTAssertNil(app._debugDocumentURL())
+			XCTAssertTrue(app._debugHandleCommandKey(58))
+			let command = "write \(tempURL.path)"
+			for char in command {
+				let value = Int32(char.asciiValue!)
+				XCTAssertTrue(app._debugHandleCommandKey(value))
+			}
+			XCTAssertTrue(app._debugHandleCommandKey(10))
+			XCTAssertFalse(app._debugIsCommandPaletteMode())
+			XCTAssertEqual(app._debugDocumentURL(), tempURL)
+			let contents = try String(contentsOf: tempURL, encoding: .utf8)
+			XCTAssertEqual(contents, "new file")
+			XCTAssertFalse(app._debugIsDirty())
+		}
+	}
+
 	func testRepeatSearchAdvancesThroughMatches() throws {
 		try runOnMainActor(description: #function) {
 			let app = TextUserInterfaceApp()
@@ -249,6 +298,27 @@ final class TextUserInterfaceAppTests: XCTestCase {
 			XCTAssertTrue(app._debugHandleSearchKey(78)) // 'N'
 			let third = try XCTUnwrap(app._debugBuffer())
 			XCTAssertEqual(third.cursorCol, 3)
+		}
+	}
+
+	func testLayoutGutterScalesWithLineCount() throws {
+		try runOnMainActor(description: #function) {
+			let app = TextUserInterfaceApp()
+			let compact = app._debugLayout(rows: 40, cols: 120, lineCount: 9)
+			XCTAssertEqual(compact.gutterWidth, 4)
+			let large = app._debugLayout(rows: 40, cols: 120, lineCount: 1500)
+			XCTAssertEqual(large.gutterWidth, 6)
+		}
+	}
+
+	func testLayoutClampsGutterWhenTerminalIsNarrow() throws {
+		try runOnMainActor(description: #function) {
+			let app = TextUserInterfaceApp()
+			let narrow = app._debugLayout(rows: 30, cols: 12, lineCount: 9999)
+			XCTAssertEqual(narrow.gutterWidth, 2)
+			let inspectorLayout = app._debugLayout(rows: 30, cols: 80, lineCount: 200, inspector: true)
+			XCTAssertEqual(inspectorLayout.inspectorHeight, 8)
+			XCTAssertNotNil(inspectorLayout.inspectorTop)
 		}
 	}
 }

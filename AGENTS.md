@@ -5,6 +5,7 @@ This Swift 6 package is organised under `Sources/`, with each feature in its own
 
 ## Build, Test, and Development Commands
 Use `swift build` for a debug build and to validate dependencies. Run the CLI with `swift run tui [path/to/file]` to launch the ncurses UI and optionally open a file. Execute `swift test` (or `swift test --parallel`) before every push; it boots XCTest suites in `Tests/`.
+Pass `--theme` (`default`, `high-contrast`) and `--keymap` (`standard`, `alternate`) to align the UI palette and shortcuts with your terminal preferences; e.g. `swift run tui --theme high-contrast --keymap alternate README.md`.
 
 ## Coding Style & Naming Conventions
 Follow Swift API Design Guidelines: `UpperCamelCase` types, `lowerCamelCase` functions and properties, and thoughtfully named async methods. Existing files use tab indentation—match the surrounding style instead of rewriting. Keep imports ordered (Foundation/NIO first, internal modules next), restrict line length to ~100 characters, and let compiler availability checks guard platform-specific ncurses code.
@@ -21,7 +22,8 @@ macOS builds link against `ncurses`, while Linux uses `ncursesw`; ensure those p
 ## UI Shortcuts
 - `Ctrl+S` saves the active buffer to its backing file; invocation with `swift run tui path/to/file` seeds the document path.
 - `/` enters the incremental search prompt. Use `Ctrl+T` to toggle case sensitivity, `Ctrl+W` to constrain whole words, `Enter` to jump, `Esc` to cancel, and `n`/`N` to repeat the search forward/backward.
-- `:` opens the command palette stub for future integrations; type to filter, press `Enter` to acknowledge the placeholder, or `Esc` to close.
+- `:` opens the command palette; use `:write` to save the current file or `:write <path>` to perform Save As. Type to filter, press `Enter` to execute, or `Esc` to close.
+- Line numbers render in a left gutter coloured via the active `TUITheme`; monochrome is used if colours are unavailable.
 - `F7` steps back through the navigation history and `F8` steps forward. The footer reflects history state when active.
 - `Shift+Arrow` extends the selection while moving; plain arrows clear the selection.
 - `Home`/`End` (and their Shift variants) jump to the start/end of the current line.

@@ -19,6 +19,8 @@ public enum TUIKeys : Int32 {
 public final class TextUserInterfaceApp {
 	
 	private let logger: Logger
+	private let theme: TUITheme
+	private let keymap: TUIKeymap
 	private var buffer: EditorBuffer?      // ⬅️ conserver l’état
 	private struct KeyInspectorEntry {
 		var rawLabel: String
@@ -46,6 +48,11 @@ public final class TextUserInterfaceApp {
 		var query: String
 	}
 
+	private struct CommandExecutionResult {
+		var success: Bool
+		var inspectorNote: String?
+	}
+
 	private enum InputMode {
 		case normal
 		case search(SearchModeState)
@@ -62,6 +69,20 @@ public final class TextUserInterfaceApp {
 		case handled(inspectorNote: String?)
 	}
 
+	struct LayoutMetrics {
+		var cols: Int32
+		var rows: Int32
+		var editorTop: Int32
+		var editorHeight: Int32
+		var gutterWidth: Int32
+		var inspectorTop: Int32?
+		var inspectorHeight: Int32
+		var diagnosticsTop: Int32?
+		var diagnosticsHeight: Int32
+		var keyInfoRow: Int32
+		var footerRow: Int32
+	}
+
 	private let inspectorCapacity = 6
 	private let inspectorPanelHeight: Int32 = 8
 	private var keyInspector: KeyInspectorState
@@ -75,15 +96,18 @@ public final class TextUserInterfaceApp {
 	private var navigationForward: [EditorBuffer.Cursor] = []
 	private let navigationHistoryLimit = 128
 	private var suppressHistoryRecording = false
+	private var colorsEnabled = false
 
 	// éventuellement:
 	private weak var diagsProvider: DiagnosticsProvider?
 	private var statusMessage: String = ""
 
-	public init(enableKeyInspector: Bool = false) {
+	public init(theme: TUITheme = .default, keymap: TUIKeymap = .standard, enableKeyInspector: Bool = false) {
 		var log = Logger(label: "TextUserInterfaceApp")
 		log.logLevel = Self.resolveLogLevel()
 		self.logger = log
+		self.theme = theme
+		self.keymap = keymap
 		self.keyInspector = KeyInspectorState(isEnabled: enableKeyInspector, entries: [])
 	}
 	
@@ -93,6 +117,76 @@ public final class TextUserInterfaceApp {
 			return .info
 		}
 		return level
+	}
+
+	private func configureColors() {
+		colorsEnabled = false
+		guard tui_has_colors() else { return }
+		tui_start_color()
+		if theme.useDefaultBackground {
+			tui_use_default_colors()
+		}
+		colorsEnabled = theme.install()
+	}
+
+	private func colorPair(for role: TUIThemeRole) -> TUIColorPair? {
+		if let pair = theme.colorPair(for: role) {
+			return pair
+		}
+		return theme.colorPair(for: .editorText)
+	}
+
+	private func makeLayout(rows: Int32, cols: Int32, inspectorHeight: Int32, diagnosticsHeight: Int32, buffer: EditorBuffer?) -> LayoutMetrics {
+		let footerRow = max(0, rows - 1)
+		let keyInfoRow = max(0, footerRow - 1)
+		let reservedTop: Int32 = 2
+		let inspectorClamped = max(0, inspectorHeight)
+		let diagnosticsClamped = max(0, diagnosticsHeight)
+		var nextTop = keyInfoRow
+		let inspectorTop: Int32?
+		if inspectorClamped > 0 {
+			let top = max(reservedTop, nextTop - inspectorClamped)
+			inspectorTop = top
+			nextTop = top
+		} else {
+			inspectorTop = nil
+		}
+		let diagnosticsTop: Int32?
+		if diagnosticsClamped > 0 {
+			let top = max(reservedTop, nextTop - diagnosticsClamped)
+			diagnosticsTop = top
+			nextTop = top
+		} else {
+			diagnosticsTop = nil
+		}
+		let editorTop = reservedTop
+		var editorHeight = nextTop - editorTop
+		if editorHeight < 3 {
+			let fallback = rows - reservedTop - max(0, footerRow - keyInfoRow) - inspectorClamped - diagnosticsClamped
+			editorHeight = max(3, fallback)
+		}
+		let desiredGutter = gutterWidth(for: buffer)
+		let gutterLimit = max(Int32(0), cols - 10)
+		let gutterWidth = gutterLimit > 0 ? min(desiredGutter, gutterLimit) : 0
+		return LayoutMetrics(
+			cols: cols,
+			rows: rows,
+			editorTop: editorTop,
+			editorHeight: max(3, editorHeight),
+			gutterWidth: gutterWidth,
+			inspectorTop: inspectorTop,
+			inspectorHeight: inspectorClamped,
+			diagnosticsTop: diagnosticsTop,
+			diagnosticsHeight: diagnosticsClamped,
+			keyInfoRow: keyInfoRow,
+			footerRow: footerRow
+		)
+	}
+
+	private func gutterWidth(for buffer: EditorBuffer?) -> Int32 {
+		let count = max(1, buffer?.lines.count ?? 1)
+		let digits = max(2, String(count).count)
+		return Int32(max(4, digits + 2))
 	}
 	
 	public func run(
@@ -117,7 +211,8 @@ public final class TextUserInterfaceApp {
 		
 		initscr()
 		defer { endwin() }
-		
+		configureColors()
+
 		cbreak()
 		noecho() // n’affiche pas automatiquement les touches
 		nonl() // no new line
@@ -142,29 +237,24 @@ public final class TextUserInterfaceApp {
 		while running {
 			erase()
 			
-			let cols: Int32 = Int32(tui_cols())   // wrappers -> pas d’accès direct à COLS/LINES
+			let cols: Int32 = Int32(tui_cols())
 			let rows: Int32 = Int32(tui_lines())
-			let reservedRows: Int32 = 2
 			let inspectorHeight: Int32 = keyInspector.isEnabled ? inspectorPanelHeight : 0
-			var editorRows = rows - reservedRows - inspectorHeight
-			editorRows = max(5, editorRows)
-			if diagsProvider != nil && diagHeight > 0 {
-				editorRows = max(5, editorRows - diagHeight)
-			}
-			
+			let diagnosticsHeight: Int32 = (diagsProvider != nil) ? diagHeight : 0
+			let layout = makeLayout(rows: rows, cols: cols, inspectorHeight: inspectorHeight, diagnosticsHeight: diagnosticsHeight, buffer: buffer)
 			let header = headerLine(maxWidth: Int(cols))
-			putCleared(0, 0, header)
+			putCleared(0, 0, header, role: .header)
 			mvhline(1, 0, 0, cols)
-			
 			if let buf = buffer {
-				renderEditor(buf: buf, top: 2, height: editorRows, width: cols)
+				renderEditor(buf: buf, layout: layout)
 			} else {
 				put(3, 2, "No file open. Use --file <path> to open a file.")
 			}
-			
-			if let provider = diagsProvider, diagHeight > 0 {
-				let top = rows - diagHeight
-				drawDiagnostics(provider: provider, top: top, height: diagHeight, width: cols)
+			if let provider = diagsProvider, layout.diagnosticsHeight > 0, let top = layout.diagnosticsTop {
+				drawDiagnostics(provider: provider, top: top, height: layout.diagnosticsHeight, width: cols)
+			}
+			if layout.inspectorHeight > 0, let inspectorTop = layout.inspectorTop {
+				renderKeyInspector(top: inspectorTop, height: layout.inspectorHeight, width: cols)
 			}
 			
 			refresh()
@@ -194,20 +284,23 @@ public final class TextUserInterfaceApp {
 				break
 			}
 			
+			let viewRows = max(1, Int(layout.editorHeight))
 			switch key {
-			case 27, 113:
-				if key == 27 {
-					if handleEscapeSequence() {
-						continue
-					}
-					logger.info("key: \(hexString) aka \(key)")
-					inspectorNote = "escape"
-				} else {
-					logger.info("key: \(hexString) aka \(key)")
-					inspectorNote = "quit"
-				}
+			case let value where keymap.quitKeys.contains(value):
+				logger.info("key: \(hexString) aka \(key) -> quit hotkey")
+				inspectorNote = "quit"
 				running = false
-				
+			case let value where keymap.saveKeys.contains(value):
+				logger.info("key: \(hexString) aka \(key) -> save hotkey")
+				inspectorNote = "save"
+				let saved = saveDocument()
+				notifySaveOutcome(success: saved)
+			case 27:
+				if handleEscapeSequence() {
+					continue
+				}
+				logger.info("key: \(hexString) aka \(key)")
+				inspectorNote = "escape"
 			case KEY_UP:
 				logger.info("key: \(hexString) aka \(key) aka KEY_UP")
 				inspectorNote = "cursor up"
@@ -277,28 +370,20 @@ public final class TextUserInterfaceApp {
 				logger.info("key: \(hexString) aka \(key) aka KEY_NPAGE")
 				inspectorNote = "page down"
 				mutateBuffer { buffer in
-					buffer.pageScroll(page: +1, viewRows: Int(editorRows))
+					buffer.pageScroll(page: +1, viewRows: viewRows)
 					return nil
 				}
 			case KEY_PPAGE:
 				logger.info("key: \(hexString) aka \(key) aka KEY_PPAGE")
 				inspectorNote = "page up"
 				mutateBuffer { buffer in
-					buffer.pageScroll(page: -1, viewRows: Int(editorRows))
+					buffer.pageScroll(page: -1, viewRows: viewRows)
 					return nil
 				}
 			case 100:
 				logger.info("key: \(hexString) aka \(key) aka ???")
 				inspectorNote = "toggle diagnostics"
 				diagHeight = (diagHeight == 0) ? 8 : 0
-			case 19: // Ctrl+S
-				logger.info("key: \(hexString) aka \(key) aka Ctrl+S")
-				inspectorNote = "save"
-				if saveDocument() {
-					notify(title: "File Saved", message: documentDisplayName(), kind: .success, metadata: saveMetadata())
-				} else {
-					notify(title: "Save Failed", message: statusMessage, kind: .warning, metadata: saveMetadata())
-				}
 			case 112, 80:
 				logger.info("key: \(hexString) aka \(key) aka 112,80")
 				inspectorNote = "paste clipboard"
@@ -339,51 +424,6 @@ public final class TextUserInterfaceApp {
 					notify(title: "Selection Copied", message: preview, kind: .info, metadata: ["length": String(copied.count)])
 					return "Copied \\(copied.count) chars"
 				}
-			case KEY_BREAK:
-				logger.info("key: \(hexString) aka \(key) aka KEY_BREAK")
-				break
-			case KEY_SRESET:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SRESET")
-				break
-			case KEY_RESET:
-				logger.info("key: \(hexString) aka \(key) aka KEY_RESET")
-				break
-			case KEY_DOWN:
-				logger.info("key: \(hexString) aka \(key) aka KEY_DOWN")
-				break
-			case KEY_UP:
-				logger.info("key: \(hexString) aka \(key) aka KEY_UP")
-				break
-			case KEY_LEFT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_LEFT")
-				break
-			case KEY_RIGHT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_RIGHT")
-				break
-			case KEY_HOME:
-				logger.info("key: \(hexString) aka \(key) aka KEY_HOME")
-				break
-			case KEY_BACKSPACE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_BACKSPACE")
-				break
-			case KEY_F0:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F0")
-				break
-			case KEY_F0+1:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F1")
-				break
-			case KEY_F0+2:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F2")
-				break
-			case KEY_F0+3:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F3")
-				break
-			case KEY_F0+4:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F4")
-				break
-			case KEY_F0+5:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F5")
-				break
 			case KEY_F0+6:
 				logger.info("key: \(hexString) aka \(key) aka KEY_F7")
 				if navigateBack() {
@@ -394,279 +434,15 @@ public final class TextUserInterfaceApp {
 				if navigateForward() {
 					inspectorNote = "nav forward"
 				}
-			case KEY_F0+8:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F9")
-				break
-			case KEY_F0+9:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F10")
-				break
-			case KEY_F0+10:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F11")
-				break
-			case KEY_DL:
-				logger.info("key: \(hexString) aka \(key) aka KEY_DL")
-				break
-			case KEY_IL:
-				logger.info("key: \(hexString) aka \(key) aka KEY_IL")
-				break
-			case KEY_DC:
-				logger.info("key: \(hexString) aka \(key) aka KEY_DC")
-				break
-			case KEY_IC:
-				logger.info("key: \(hexString) aka \(key) aka KEY_IC")
-				break
-			case KEY_EIC:
-				logger.info("key: \(hexString) aka \(key) aka KEY_EIC")
-				break
-			case KEY_CLEAR:
-				logger.info("key: \(hexString) aka \(key) aka KEY_CLEAR")
-				break
-			case KEY_EOS:
-				logger.info("key: \(hexString) aka \(key) aka KEY_EOS")
-				break
-			case KEY_EOL:
-				logger.info("key: \(hexString) aka \(key) aka KEY_EOL")
-				break
-			case KEY_SF:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SF")
-				break
-			case KEY_SR:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SR")
-				break
-			case KEY_NPAGE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_NPAGE")
-				inspectorNote = "page down"
-				break
-			case KEY_PPAGE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_PPAGE")
-				inspectorNote = "page up"
-				break
-			case KEY_STAB:
-				logger.info("key: \(hexString) aka \(key) aka KEY_STAB")
-				break
-			case KEY_CTAB:
-				logger.info("key: \(hexString) aka \(key) aka KEY_CTAB")
-				break
-			case KEY_CATAB, Int32(0x20E): // Shift+Option+Down
-				logger.info("key: \(hexString) aka \(key) aka KEY_CATAB")
-				break
-			case KEY_ENTER:
-				logger.info("key: \(hexString) aka \(key) aka KEY_ENTER")
-				break
-			case KEY_PRINT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_PRINT")
-				break
-			case KEY_LL:
-				logger.info("key: \(hexString) aka \(key) aka KEY_LL")
-				break
-			case KEY_A1:
-				logger.info("key: \(hexString) aka \(key) aka KEY_A1")
-				break
-			case KEY_A3:
-				logger.info("key: \(hexString) aka \(key) aka KEY_A3")
-				break
-			case KEY_B2:
-				logger.info("key: \(hexString) aka \(key) aka KEY_B2")
-				break
-			case KEY_C1:
-				logger.info("key: \(hexString) aka \(key) aka KEY_C1")
-				break
-			case KEY_C3:
-				logger.info("key: \(hexString) aka \(key) aka KEY_C3")
-				break
-			case KEY_BTAB:
-				logger.info("key: \(hexString) aka \(key) aka KEY_BTAB")
-				break
-			case KEY_BEG:
-				logger.info("key: \(hexString) aka \(key) aka KEY_BEG")
-				break
-			case KEY_CANCEL:
-				logger.info("key: \(hexString) aka \(key) aka KEY_CANCEL")
-				break
-			case KEY_CLOSE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_CLOSE")
-				break
-			case KEY_COMMAND:
-				logger.info("key: \(hexString) aka \(key) aka KEY_COMMAND")
-				break
-			case KEY_COPY:
-				logger.info("key: \(hexString) aka \(key) aka KEY_COPY")
-				break
-			case KEY_CREATE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_CREATE")
-				break
-			case KEY_END:
-				logger.info("key: \(hexString) aka \(key) aka KEY_END")
-				break
-			case KEY_EXIT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_EXIT")
-				break
-			case KEY_FIND:
-				logger.info("key: \(hexString) aka \(key) aka KEY_FIND")
-				break
-			case KEY_HELP:
-				logger.info("key: \(hexString) aka \(key) aka KEY_HELP")
-				break
-			case KEY_MARK:
-				logger.info("key: \(hexString) aka \(key) aka KEY_MARK")
-				break
-			case KEY_MESSAGE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_MESSAGE")
-				break
-			case KEY_MOVE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_MOVE")
-				break
-			case KEY_NEXT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_NEXT")
-				break
-			case KEY_OPEN:
-				logger.info("key: \(hexString) aka \(key) aka KEY_OPEN")
-				break
-			case KEY_OPTIONS:
-				logger.info("key: \(hexString) aka \(key) aka KEY_OPTIONS")
-				break
-			case KEY_PREVIOUS:
-				logger.info("key: \(hexString) aka \(key) aka KEY_PREVIOUS")
-				break
-			case KEY_REDO:
-				logger.info("key: \(hexString) aka \(key) aka KEY_REDO")
-				break
-			case KEY_REFERENCE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_REFERENCE")
-				break
-			case KEY_REFRESH:
-				logger.info("key: \(hexString) aka \(key) aka KEY_REFRESH")
-				break
-			case KEY_REPLACE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_REPLACE")
-				break
-			case KEY_RESTART, Int32(0x237): // Shift+Option+Up
-				logger.info("key: \(hexString) aka \(key) aka KEY_RESTART")
-				break
-			case KEY_RESUME:
-				logger.info("key: \(hexString) aka \(key) aka KEY_RESUME")
-				break
-			case KEY_SAVE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SAVE")
-				break
-			case KEY_SBEG:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SBEG")
-				break
-			case KEY_SCANCEL:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SCANCEL")
-				break
-			case KEY_SCOMMAND:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SCOMMAND")
-				break
-			case KEY_SCOPY:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SCOPY")
-				break
-			case KEY_SCREATE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SCREATE")
-				break
-			case KEY_SDC:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SDC")
-				break
-			case KEY_SDL:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SDL")
-				break
-			case KEY_SELECT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SELECT")
-				break
-			case KEY_SEND:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SEND")
-				inspectorNote = "select line end"
-				break
-			case KEY_SEOL:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SEOL")
-				break
-			case KEY_SEXIT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SEXIT")
-				break
-			case KEY_SFIND:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SFIND")
-				break
-			case KEY_SHELP:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SHELP")
-				break
-			case KEY_SHOME:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SHOME")
-				inspectorNote = "select line start"
-				break
-			case KEY_SIC:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SIC")
-				break
-			case KEY_SLEFT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SLEFT")
-				break
-			case KEY_SMESSAGE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SMESSAGE")
-				break
-			case KEY_SMOVE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SMOVE")
-				break
-			case KEY_SNEXT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SNEXT")
-				break
-			case KEY_SOPTIONS:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SOPTIONS")
-				break
-			case KEY_SPREVIOUS:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SPREVIOUS")
-				break
-			case KEY_SPRINT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SPRINT")
-				break
-			case KEY_SREDO:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SREDO")
-				break
-			case KEY_SREPLACE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SREPLACE")
-				break
-			case KEY_SRIGHT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SRIGHT")
-				inspectorNote = "select right"
-				break
-			case KEY_SRSUME:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SRSUME")
-				break
-			case KEY_SSAVE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SSAVE")
-				break
-			case KEY_SSUSPEND:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SSUSPEND")
-				break
-			case KEY_SUNDO:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SUNDO")
-				break
-			case KEY_SUSPEND:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SUSPEND")
-				break
-			case KEY_UNDO:
-				logger.info("key: \(hexString) aka \(key) aka KEY_UNDO")
-				break
-			case KEY_MOUSE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_MOUSE")
-				break
-			case KEY_RESIZE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_RESIZE")
-				break
-#if os(Windows)
-			case KEY_EVENT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_EVENT")
-				break
-#endif
 			default:
 				logger.info("key: \(hexString) aka \(key)")
-				break
 			}
-
-			if let note = inspectorNote {
-				recordKeyInspector(key: key, ascii: asciiSummary, note: note)
-			}
+		if let note = inspectorNote {
+			recordKeyInspector(key: key, ascii: asciiSummary, note: note)
+		}
 
 			let keyInfo = "key: \(ch)"
-			putCleared(rows - 2, 2, keyInfo)
+			putCleared(layout.keyInfoRow, 2, keyInfo, role: .keyInfo)
 			var footerParts: [String] = [documentDisplayName()]
 			if let buf = buffer {
 				var cursorInfo = "pos \(buf.cursorRow + 1):\(buf.cursorCol + 1)"
@@ -686,8 +462,8 @@ public final class TextUserInterfaceApp {
 				footerParts.append(statusMessage)
 			}
 			let footer = footerParts.joined(separator: "  ")
-			let footerWidth = max(0, Int(cols) - 4)
-			putCleared(rows - 1, 2, TextWidth.clip(footer, max: footerWidth))
+			let footerWidth = max(0, Int(layout.cols) - 4)
+			putCleared(layout.footerRow, 2, TextWidth.clip(footer, max: footerWidth), role: .statusBar)
 			statusMessage = ""
 		}
 	}
@@ -753,15 +529,15 @@ public final class TextUserInterfaceApp {
 			}
 			return .handled(inspectorNote: inspector)
 		case .normal:
-			if key == 47 { // '/'
+			if keymap.searchKeys.contains(key) {
 				enterSearchMode()
 				return .handled(inspectorNote: "search mode")
 			}
-			if key == 110 { // 'n'
+			if keymap.searchNextKeys.contains(key) {
 				let success = repeatSearch(.forward)
 				return .handled(inspectorNote: success ? "search next" : "search next missing")
 			}
-			if key == 78 { // 'N'
+			if keymap.searchPreviousKeys.contains(key) {
 				let success = repeatSearch(.backward)
 				return .handled(inspectorNote: success ? "search previous" : "search previous missing")
 			}
@@ -792,9 +568,9 @@ public final class TextUserInterfaceApp {
 				statusMessage = "Command palette closed"
 				note = "palette cancel"
 			case KEY_ENTER, 10, 13:
-				statusMessage = "Command palette stub — no commands yet"
+				let result = executeCommand(query: state.query)
 				inputMode = .normal
-				note = "palette run"
+				note = result.inspectorNote ?? (result.success ? "palette run" : "palette error")
 			case KEY_BACKSPACE, 127, 8:
 				if !state.query.isEmpty {
 					state.query.removeLast()
@@ -815,7 +591,7 @@ public final class TextUserInterfaceApp {
 			}
 			return .handled(inspectorNote: note)
 		case .normal:
-			if key == 58 { // ':'
+			if keymap.commandPaletteKeys.contains(key) {
 				openCommandPalette()
 				return .handled(inspectorNote: "palette open")
 			}
@@ -825,9 +601,50 @@ public final class TextUserInterfaceApp {
 		}
 	}
 
+	private func executeCommand(query: String) -> CommandExecutionResult {
+		let trimmed = query.trimmingCharacters(in: .whitespaces)
+		guard !trimmed.isEmpty else {
+			statusMessage = "No command provided"
+			return CommandExecutionResult(success: false, inspectorNote: "palette empty")
+		}
+		let parts = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+		guard let rawCommand = parts.first else {
+			statusMessage = "No command provided"
+			return CommandExecutionResult(success: false, inspectorNote: "palette empty")
+		}
+		var command = rawCommand.lowercased()
+		if command.hasSuffix("!") {
+			command.removeLast()
+		}
+		switch command {
+		case "write", "w":
+			let argument = parts.count > 1 ? String(parts[1]) : nil
+			return executeWriteCommand(pathArgument: argument)
+		default:
+			statusMessage = "Unknown command: \(command)"
+			return CommandExecutionResult(success: false, inspectorNote: "palette unknown")
+		}
+	}
+
+	private func executeWriteCommand(pathArgument: String?) -> CommandExecutionResult {
+		guard let currentBuffer = buffer else {
+			statusMessage = "No buffer to save"
+			return CommandExecutionResult(success: false, inspectorNote: "palette write failed")
+		}
+		let success: Bool
+		if let pathArgument, !pathArgument.trimmingCharacters(in: .whitespaces).isEmpty {
+			let targetURL = expandedURL(from: pathArgument)
+			success = writeBuffer(currentBuffer, to: targetURL, updateDocumentURL: true)
+		} else {
+			success = saveDocument()
+		}
+		notifySaveOutcome(success: success)
+		return CommandExecutionResult(success: success, inspectorNote: success ? "palette write" : "palette write failed")
+	}
+
 	private func openCommandPalette() {
 		inputMode = .commandPalette(CommandPaletteState(query: ""))
-		statusMessage = "Command palette (stub). Enter=run Esc=cancel"
+		statusMessage = "Command palette. Enter=run Esc=cancel"
 	}
 
 	private func updateSearchPreview(for state: inout SearchModeState) {
@@ -1064,14 +881,14 @@ public final class TextUserInterfaceApp {
 		guard keyInspector.isEnabled, height > 1 else { return }
 		mvhline(top, 0, 0, width)
 		let header = "Key Inspector"
-		putCleared(top + 1, 1, TextWidth.clip(header, max: Int(width) - 2))
+		putCleared(top + 1, 1, TextWidth.clip(header, max: Int(width) - 2), role: .inspectorHeader)
 		let availableRows = max(0, Int(height) - 2)
 		guard availableRows > 0 else { return }
 		let recent = keyInspector.entries.suffix(availableRows)
 		var row = top + 2
 		for entry in recent.reversed() {
 			let line = "\(entry.rawLabel)  \(entry.asciiLabel)  \(entry.note)"
-			putCleared(row, 1, TextWidth.clip(line, max: Int(width) - 2))
+			putCleared(row, 1, TextWidth.clip(line, max: Int(width) - 2), role: .inspectorEntry)
 			row += 1
 		}
 		while row < top + height {
@@ -1109,12 +926,19 @@ public final class TextUserInterfaceApp {
 			return false
 		}
 		guard let url = documentURL else {
-			statusMessage = "No file path. Save As not yet implemented"
+			statusMessage = "Use :write <path> to pick a save location"
 			return false
 		}
+		return writeBuffer(currentBuffer, to: url, updateDocumentURL: false)
+	}
+
+	private func writeBuffer(_ buffer: EditorBuffer, to url: URL, updateDocumentURL: Bool) -> Bool {
 		do {
-			let text = currentBuffer.joinedLines()
+			let text = buffer.joinedLines()
 			try text.write(to: url, atomically: true, encoding: .utf8)
+			if updateDocumentURL {
+				documentURL = url
+			}
 			isDirty = false
 			statusMessage = "Saved \(url.lastPathComponent)"
 			return true
@@ -1122,6 +946,19 @@ public final class TextUserInterfaceApp {
 			statusMessage = "Save failed: \(error.localizedDescription)"
 			return false
 		}
+	}
+
+	private func notifySaveOutcome(success: Bool) {
+		if success {
+			notify(title: "File Saved", message: documentDisplayName(), kind: .success, metadata: saveMetadata())
+		} else {
+			notify(title: "Save Failed", message: statusMessage, kind: .warning, metadata: saveMetadata())
+		}
+	}
+
+	private func expandedURL(from path: String) -> URL {
+		let expanded = NSString(string: path).expandingTildeInPath
+		return URL(fileURLWithPath: expanded)
 	}
 
 	private func saveMetadata() -> [String: String] {
@@ -1132,37 +969,57 @@ public final class TextUserInterfaceApp {
 		return metadata
 	}
 
-	private func putCleared(_ y: Int32, _ x: Int32, _ s: String) {
+	private func putCleared(_ y: Int32, _ x: Int32, _ s: String, role: TUIThemeRole = .editorText) {
 		move(y, x)
 		clrtoeol()
-		put(y, x, s)
+		put(y, x, s, role: role)
 	}
 
 	// Helpers non-variadiques
-	private func put(_ y: Int32, _ x: Int32, _ s: String) {
+	private func put(_ y: Int32, _ x: Int32, _ s: String, role: TUIThemeRole = .editorText) {
 		move(y, x)
-		s.withCString { cstr in tui_addstr(cstr) }  // wrapper addstr + ignore le résultat
+		append(s, role: role)
 	}
 	
-	private func renderEditor(buf: EditorBuffer, top: Int32, height: Int32, width: Int32) {
+	private func append(_ s: String, role: TUIThemeRole = .editorText) {
+		guard !s.isEmpty else { return }
+		if colorsEnabled, let pair = colorPair(for: role) {
+			tui_attron_color_pair(pair.identifier)
+			s.withCString { cstr in tui_addstr(cstr) }
+			tui_attroff_color_pair(pair.identifier)
+		} else {
+			s.withCString { cstr in tui_addstr(cstr) }
+		}
+	}
+	
+	private func renderEditor(buf: EditorBuffer, layout: LayoutMetrics) {
 		var scrollRow = buf.scrollRow
 
 		if buf.cursorRow < scrollRow {
 			scrollRow = buf.cursorRow
 		}
-		let bottomVisible = Int(scrollRow) + Int(height) - 1
+		let bottomVisible = Int(scrollRow) + Int(layout.editorHeight) - 1
 		if buf.cursorRow > bottomVisible {
-			scrollRow = max(0, buf.cursorRow - Int(height) + 1)
+			scrollRow = max(0, buf.cursorRow - Int(layout.editorHeight) + 1)
 		}
 		
-		let maxLine = min(buf.lines.count, Int(scrollRow) + Int(height))
+		let maxLine = min(buf.lines.count, Int(scrollRow) + Int(layout.editorHeight))
 		let selection = buf.hasSelection ? buf.selection?.normalized : nil
-		var screenRow = top
+		let gutterWidth = layout.gutterWidth
+		let contentWidth = max(1, Int(layout.cols - gutterWidth) - 1)
+		var screenRow = layout.editorTop
 		for i in Int(scrollRow)..<maxLine {
 			let rawLine = buf.lines[i]
-			let clipped = TextWidth.clip(rawLine, max: Int(width) - 1)
+			let clipped = TextWidth.clip(rawLine, max: contentWidth)
 			move(screenRow, 0)
 			clrtoeol()
+			if gutterWidth > 0 {
+				let gutterDigits = max(1, Int(gutterWidth) - 1)
+				let gutterText = String(format: "%\(gutterDigits)d ", i + 1)
+				let clippedGutter = TextWidth.clip(gutterText, max: Int(gutterWidth))
+				put(screenRow, 0, clippedGutter, role: .gutter)
+			}
+			move(screenRow, gutterWidth)
 			if let selectionRange = selectionColumns(forRow: i, selection: selection) {
 				let begin = max(0, selectionRange.lowerBound)
 				let end = min(selectionRange.upperBound, clipped.count)
@@ -1171,9 +1028,13 @@ public final class TextUserInterfaceApp {
 					let highlight = substring(clipped, start: begin, end: end)
 					let suffix = substring(clipped, start: end, end: clipped.count)
 					append(prefix)
-					tui_reverse_on()
-					append(highlight)
-					tui_reverse_off()
+					if colorsEnabled, colorPair(for: .selection) != nil {
+						append(highlight, role: .selection)
+					} else {
+						tui_reverse_on()
+						append(highlight)
+						tui_reverse_off()
+					}
 					append(suffix)
 				} else {
 					append(clipped)
@@ -1184,8 +1045,10 @@ public final class TextUserInterfaceApp {
 			screenRow += 1
 		}
 		
-		let cursorScrRow = top + Int32(buf.cursorRow - scrollRow)
-		let cursorScrCol = Int32(min(buf.cursorCol, Int(width) - 1))
+		let cursorScrRow = layout.editorTop + Int32(buf.cursorRow - scrollRow)
+		let maxCursorCol = max(0, min(buf.cursorCol, contentWidth))
+		let cursorColumn = layout.gutterWidth + Int32(maxCursorCol)
+		let cursorScrCol = min(max(0, layout.cols - 1), cursorColumn)
 		move(cursorScrRow, cursorScrCol)
 	}
 	
@@ -1579,6 +1442,19 @@ extension TextUserInterfaceApp {
 			return state.query
 		}
 		return nil
+	}
+
+	func _debugLayout(rows: Int32, cols: Int32, lineCount: Int, inspector: Bool = false, diagnosticsHeight: Int32 = 0) -> LayoutMetrics {
+		let safeCount = max(1, lineCount)
+		let lines = Array(repeating: "", count: safeCount)
+		let buffer = EditorBuffer(lines: lines)
+		return makeLayout(
+			rows: rows,
+			cols: cols,
+			inspectorHeight: inspector ? inspectorPanelHeight : 0,
+			diagnosticsHeight: diagnosticsHeight,
+			buffer: buffer
+		)
 	}
 }
 #endif

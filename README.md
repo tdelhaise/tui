@@ -49,6 +49,8 @@ If linking fails for ncurses on Linux, ensure the `libncursesw5-dev` package is 
 ## Notes
 
 - TextUserInterfaceApp is a minimal ncurses loop with key handling. Press `q` to quit or `Ctrl+S` to save.
-- Use `/` for incremental search and `:` for the command palette stub.
+- Use `/` for incremental search and `:` for the command palette. `:write` saves the current document; `:write <path>` performs Save As for untitled buffers.
 - LSPClient streams stdio to/from `clangd` (when found) and logs JSON-RPC messages.
 - See `AGENTS.md` for full contributor guidelines.
+- The editor displays a themed line-number gutter; launch with `--theme` (`default`, `high-contrast`) to select a palette.
+- Status and inspector panels adopt the theme palette; fall back to monochrome when colours are unavailable. Combine with `--keymap` (`standard`, `alternate`) to align shortcuts.
