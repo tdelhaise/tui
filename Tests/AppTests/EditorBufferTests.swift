@@ -124,4 +124,23 @@ final class EditorBufferTests: XCTestCase {
 		let copied = buffer.copySelection()
 		XCTAssertEqual(copied, "🙂 café\n東京")
 	}
+
+	func testInsertAndDeleteCharacters() {
+		var buffer = EditorBuffer(lines: ["abc"])
+		buffer.moveCursorTo(row: 0, column: 1)
+		buffer.insertCharacter("x")
+		XCTAssertEqual(buffer.lines[0], "axbc")
+		buffer.insertNewline()
+		XCTAssertEqual(buffer.lines, ["ax", "bc"])
+		XCTAssertEqual(buffer.cursorRow, 1)
+		XCTAssertEqual(buffer.cursorCol, 0)
+		let backwardResult = buffer.deleteBackward()
+		XCTAssertTrue(backwardResult)
+		XCTAssertEqual(buffer.lines, ["axbc"])
+		XCTAssertEqual(buffer.cursorRow, 0)
+		XCTAssertEqual(buffer.cursorCol, 2)
+		let forwardResult = buffer.deleteForward()
+		XCTAssertTrue(forwardResult)
+		XCTAssertEqual(buffer.lines, ["axc"])
+	}
 }

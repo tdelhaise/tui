@@ -27,7 +27,7 @@ public struct TUIKeymap: Sendable {
 
 public extension TUIKeymap {
 	static let standard = TUIKeymap(
-		quitKeys: Set<Int32>([113]), // 'q'
+		quitKeys: Set<Int32>([17]), // Ctrl+Q
 		saveKeys: Set<Int32>([19]), // Ctrl+S
 		commandPaletteKeys: Set<Int32>([58]), // ':'
 		searchKeys: Set<Int32>([47]), // '/'

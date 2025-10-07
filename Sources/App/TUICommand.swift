@@ -33,8 +33,8 @@ struct TUICommand: AsyncParsableCommand {
 		
 		let subsystem = "org.tui.tui"
 		let commandLoggerLabel = "\(subsystem).command"
-		let console = ConsoleLogger(commandLoggerLabel)
-		var puppy = Puppy(loggers: [console])
+		// let console = ConsoleLogger(commandLoggerLabel)
+		var puppy = Puppy(loggers: [])
 #if canImport(Darwin)
 		let oslog = OSLogger(subsystem, category: "input")
 		puppy.add(oslog)

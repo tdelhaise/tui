@@ -151,6 +151,45 @@ public struct EditorBuffer: Sendable {
 		replace(from: start, to: end, with: text)
 		selection = nil
 	}
+
+	public mutating func insertCharacter(_ character: Character) {
+		insert(String(character))
+	}
+
+	public mutating func insertNewline() {
+		insert("\n")
+	}
+
+	@discardableResult
+	public mutating func deleteBackward() -> Bool {
+		if deleteSelection() { return true }
+		if cursorRow == 0 && cursorCol == 0 { return false }
+		if cursorCol > 0 {
+			let start = Cursor(row: cursorRow, column: cursorCol - 1)
+			replace(from: start, to: cursor, with: "")
+			return true
+		}
+		let previousRow = cursorRow - 1
+		let previousColumn = lines[previousRow].count
+		replace(from: Cursor(row: previousRow, column: previousColumn), to: cursor, with: "")
+		return true
+	}
+
+	@discardableResult
+	public mutating func deleteForward() -> Bool {
+		if deleteSelection() { return true }
+		if cursorRow >= lines.count { return false }
+		let line = lines[cursorRow]
+		if cursorCol < line.count {
+			let next = Cursor(row: cursorRow, column: cursorCol + 1)
+			replace(from: cursor, to: next, with: "")
+			return true
+		}
+		let nextRow = cursorRow + 1
+		guard nextRow < lines.count else { return false }
+		replace(from: cursor, to: Cursor(row: nextRow, column: 0), with: "")
+		return true
+	}
 	
 	public mutating func pasteClipboard() {
 		guard !clipboard.isEmpty else { return }

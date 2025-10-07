@@ -20,9 +20,12 @@ History favours compact, descriptive commit titles (e.g. “First build that wor
 macOS builds link against `ncurses`, while Linux uses `ncursesw`; ensure those packages exist before running `swift build`. For LSP features, validate the `--clangd` and `--sourcekit` paths locally and stub them in CI to avoid blocking the main command. Keep locale-aware behaviour in mind when handling text rendering.
 
 ## UI Shortcuts
+- `Ctrl+Q` (or `Esc`) exits the editor; `:quit` support can be added later via the command palette.
 - `Ctrl+S` saves the active buffer to its backing file; invocation with `swift run tui path/to/file` seeds the document path.
 - `/` enters the incremental search prompt. Use `Ctrl+T` to toggle case sensitivity, `Ctrl+W` to constrain whole words, `Enter` to jump, `Esc` to cancel, and `n`/`N` to repeat the search forward/backward.
 - `:` opens the command palette; use `:write` to save the current file or `:write <path>` to perform Save As. Type to filter, press `Enter` to execute, or `Esc` to close.
+- `Enter` inserts a newline, `Tab` inserts `\t`, and printable characters insert directly at the cursor.
+- `Backspace` deletes the character before the cursor (or the selection); `Delete` removes the character ahead of the cursor.
 - Line numbers render in a left gutter coloured via the active `TUITheme`; monochrome is used if colours are unavailable.
 - `F7` steps back through the navigation history and `F8` steps forward. The footer reflects history state when active.
 - `Shift+Arrow` extends the selection while moving; plain arrows clear the selection.

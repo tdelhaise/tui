@@ -48,7 +48,7 @@ If linking fails for ncurses on Linux, ensure the `libncursesw5-dev` package is 
 
 ## Notes
 
-- TextUserInterfaceApp is a minimal ncurses loop with key handling. Press `q` to quit or `Ctrl+S` to save.
+- TextUserInterfaceApp is a minimal ncurses loop with key handling. Press `Ctrl+Q` (or `Esc`) to quit and `Ctrl+S` to save.
 - Use `/` for incremental search and `:` for the command palette. `:write` saves the current document; `:write <path>` performs Save As for untitled buffers.
 - LSPClient streams stdio to/from `clangd` (when found) and logs JSON-RPC messages.
 - See `AGENTS.md` for full contributor guidelines.

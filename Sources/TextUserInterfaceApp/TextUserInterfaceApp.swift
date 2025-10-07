@@ -295,6 +295,24 @@ public final class TextUserInterfaceApp {
 				inspectorNote = "save"
 				let saved = saveDocument()
 				notifySaveOutcome(success: saved)
+			case KEY_ENTER, 10, 13:
+				logger.info("key: \(hexString) aka \(key) aka ENTER")
+				inspectorNote = "newline"
+				mutateBuffer { buffer in
+					buffer.insertNewline()
+					return nil
+				}
+			case KEY_BACKSPACE, 127, 8:
+				logger.info("key: \(hexString) aka \(key) aka BACKSPACE")
+				inspectorNote = "delete back"
+				var deleted = false
+				mutateBuffer { buffer in
+					deleted = buffer.deleteBackward()
+					return nil
+				}
+				if !deleted {
+					inspectorNote = nil
+				}
 			case 27:
 				if handleEscapeSequence() {
 					continue
@@ -380,6 +398,17 @@ public final class TextUserInterfaceApp {
 					buffer.pageScroll(page: -1, viewRows: viewRows)
 					return nil
 				}
+			case KEY_DC:
+				logger.info("key: \(hexString) aka \(key) aka KEY_DC")
+				inspectorNote = "delete forward"
+				var deleted = false
+				mutateBuffer { buffer in
+					deleted = buffer.deleteForward()
+					return nil
+				}
+				if !deleted {
+					inspectorNote = nil
+				}
 			case 100:
 				logger.info("key: \(hexString) aka \(key) aka ???")
 				inspectorNote = "toggle diagnostics"
@@ -424,6 +453,23 @@ public final class TextUserInterfaceApp {
 					notify(title: "Selection Copied", message: preview, kind: .info, metadata: ["length": String(copied.count)])
 					return "Copied \\(copied.count) chars"
 				}
+			case 9:
+				logger.info("key: \(hexString) aka \(key) aka TAB")
+				inspectorNote = "tab"
+				mutateBuffer { buffer in
+					buffer.insert("\t")
+					return nil
+				}
+			case let value where value >= 32 && value < 127:
+				if let scalar = UnicodeScalar(Int(value)) {
+					let character = Character(scalar)
+					logger.info("key: \(hexString) aka \(key) printable")
+					inspectorNote = "insert"
+					mutateBuffer { buffer in
+						buffer.insertCharacter(character)
+						return nil
+					}
+				}
 			case KEY_F0+6:
 				logger.info("key: \(hexString) aka \(key) aka KEY_F7")
 				if navigateBack() {
@@ -435,14 +481,18 @@ public final class TextUserInterfaceApp {
 					inspectorNote = "nav forward"
 				}
 			default:
-				logger.info("key: \(hexString) aka \(key)")
+				logger.info("default key: \(hexString) aka \(key)")
 			}
 		if let note = inspectorNote {
 			recordKeyInspector(key: key, ascii: asciiSummary, note: note)
 		}
 
-			let keyInfo = "key: \(ch)"
-			putCleared(layout.keyInfoRow, 2, keyInfo, role: .keyInfo)
+			if keyInspector.isEnabled {
+				let keyInfo = "key: \(ch)"
+				putCleared(layout.keyInfoRow, 2, keyInfo, role: .keyInfo)
+			} else {
+				putCleared(layout.keyInfoRow, 2, "")
+			}
 			var footerParts: [String] = [documentDisplayName()]
 			if let buf = buffer {
 				var cursorInfo = "pos \(buf.cursorRow + 1):\(buf.cursorCol + 1)"
@@ -457,7 +507,7 @@ public final class TextUserInterfaceApp {
 			if let paletteSummary = commandPaletteFooter() {
 				footerParts.append(paletteSummary)
 			}
-			footerParts.append("q/ESC to quit")
+			footerParts.append("Ctrl+Q/ESC to quit")
 			if !statusMessage.isEmpty {
 				footerParts.append(statusMessage)
 			}
@@ -910,7 +960,7 @@ public final class TextUserInterfaceApp {
 	private func headerLine(maxWidth: Int) -> String {
 		guard maxWidth > 0 else { return "" }
 		let docName = documentDisplayName()
-		let shortcuts = "  Ctrl+S:save  /:search  :palette  n/N:repeat  F7/F8:nav  q/ESC:quit  arrows:move  Shift+arrows:select  Home/End  PgUp/PgDn  v:select  y:copy  x:cut  p:paste  d:diag"
+		let shortcuts = "  Ctrl+S:save  /:search  :palette  n/N:repeat  F7/F8:nav  Ctrl+Q/ESC:quit  arrows:move  Shift+arrows:select  Home/End  PgUp/PgDn  v:select  y:copy  x:cut  p:paste  d:diag"
 		let header = "tui — \(docName)\(shortcuts)"
 		return TextWidth.clip(header, max: maxWidth)
 	}
