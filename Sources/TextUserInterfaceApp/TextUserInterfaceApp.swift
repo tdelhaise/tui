@@ -102,28 +102,71 @@ public final class TextUserInterfaceApp {
 		case handled(inspectorNote: String?)
 	}
 
-	private enum KeyEvent {
-		case command(CommandKey, KeyIdentifier, rawKey: Int32)
-		case text(TextInputKey, KeyIdentifier, rawKey: Int32)
-		case unhandled(KeyIdentifier, rawKey: Int32)
+	private enum NamedKey {
+		case left
+		case right
+		case up
+		case down
+		case home
+		case end
+		case pageUp
+		case pageDown
+		case backspaceAscii
+		case backspaceCurses
+		case enterLF
+		case enterCR
+		case tab
+		case escape
+		case deleteKey
+		case shiftLeft
+		case shiftRight
+		case shiftHome
+		case shiftEnd
+
+		static func from(_ key: Int32) -> NamedKey? {
+			switch key {
+			case KEY_LEFT: return .left
+			case KEY_RIGHT: return .right
+			case KEY_UP: return .up
+			case KEY_DOWN: return .down
+			case KEY_HOME: return .home
+			case KEY_END: return .end
+			case KEY_PPAGE: return .pageUp
+			case KEY_NPAGE: return .pageDown
+			case 127: return .backspaceAscii
+			case KEY_BACKSPACE: return .backspaceCurses
+			case 10: return .enterLF
+			case 13: return .enterCR
+			case 9: return .tab
+			case 27: return .escape
+			case KEY_DC: return .deleteKey
+			case KEY_SLEFT: return .shiftLeft
+			case KEY_SRIGHT: return .shiftRight
+			case KEY_SHOME: return .shiftHome
+			case KEY_SEND: return .shiftEnd
+			default:
+				return nil
+			}
+		}
 	}
 
-	private enum CommandKey {
+	private enum EditorCommand {
 		case quit
 		case save
-		case escape
-		case cursorUp
-		case cursorDown
-		case cursorLeft
-		case cursorRight
+		case moveLeft
+		case moveRight
+		case moveUp
+		case moveDown
 		case selectLeft
 		case selectRight
-		case moveToLineStart
-		case moveToLineEnd
+		case moveLineStart
+		case moveLineEnd
 		case selectLineStart
 		case selectLineEnd
 		case pageDown
 		case pageUp
+		case deleteBackward
+		case deleteForward
 		case toggleDiagnostics
 		case pasteClipboard
 		case toggleSelectionAnchor
@@ -131,6 +174,9 @@ public final class TextUserInterfaceApp {
 		case copySelection
 		case navigationBack
 		case navigationForward
+		case newline
+		case tab
+		case cancel
 
 		var defaultInspectorNote: String? {
 			switch self {
@@ -138,17 +184,17 @@ public final class TextUserInterfaceApp {
 				return "quit"
 			case .save:
 				return "save"
-			case .escape:
+			case .cancel:
 				return "escape"
-			case .cursorUp:
+			case .moveUp:
 				return "cursor up"
-			case .cursorDown, .cursorLeft, .cursorRight:
+			case .moveDown, .moveLeft, .moveRight:
 				return nil
 			case .selectLeft:
 				return "select left"
 			case .selectRight:
 				return "select right"
-			case .moveToLineStart, .moveToLineEnd:
+			case .moveLineStart, .moveLineEnd:
 				return nil
 			case .selectLineStart:
 				return "select line start"
@@ -158,6 +204,10 @@ public final class TextUserInterfaceApp {
 				return "page down"
 			case .pageUp:
 				return "page up"
+			case .deleteBackward:
+				return "delete back"
+			case .deleteForward:
+				return "delete forward"
 			case .toggleDiagnostics:
 				return "toggle diagnostics"
 			case .pasteClipboard:
@@ -172,7 +222,11 @@ public final class TextUserInterfaceApp {
 				return "nav back"
 			case .navigationForward:
 				return "nav forward"
-			}
+			case .newline:
+				return "newline"
+			case .tab:
+				return "tab"
+		}
 		}
 
 		var logLabel: String {
@@ -181,24 +235,24 @@ public final class TextUserInterfaceApp {
 				return "Quit"
 			case .save:
 				return "Save"
-			case .escape:
+			case .cancel:
 				return "Escape"
-			case .cursorUp:
-				return "CursorUp"
-			case .cursorDown:
-				return "CursorDown"
-			case .cursorLeft:
-				return "CursorLeft"
-			case .cursorRight:
-				return "CursorRight"
+			case .moveLeft:
+				return "MoveLeft"
+			case .moveRight:
+				return "MoveRight"
+			case .moveUp:
+				return "MoveUp"
+			case .moveDown:
+				return "MoveDown"
 			case .selectLeft:
 				return "SelectLeft"
 			case .selectRight:
 				return "SelectRight"
-			case .moveToLineStart:
-				return "MoveToLineStart"
-			case .moveToLineEnd:
-				return "MoveToLineEnd"
+			case .moveLineStart:
+				return "MoveLineStart"
+			case .moveLineEnd:
+				return "MoveLineEnd"
 			case .selectLineStart:
 				return "SelectLineStart"
 			case .selectLineEnd:
@@ -207,6 +261,10 @@ public final class TextUserInterfaceApp {
 				return "PageDown"
 			case .pageUp:
 				return "PageUp"
+			case .deleteBackward:
+				return "DeleteBackward"
+			case .deleteForward:
+				return "DeleteForward"
 			case .toggleDiagnostics:
 				return "ToggleDiagnostics"
 			case .pasteClipboard:
@@ -221,209 +279,19 @@ public final class TextUserInterfaceApp {
 				return "NavigationBack"
 			case .navigationForward:
 				return "NavigationForward"
-			}
-		}
-	}
-
-	private enum TextInputKey {
-		case newline
-		case tab
-		case backspace
-		case deleteForward
-		case character(Character)
-
-		var defaultInspectorNote: String? {
-			switch self {
-			case .newline:
-				return "newline"
-			case .tab:
-				return "tab"
-			case .backspace:
-				return "delete back"
-			case .deleteForward:
-				return "delete forward"
-			case .character:
-				return "insert"
-			}
-		}
-
-		var logLabel: String {
-			switch self {
 			case .newline:
 				return "Newline"
 			case .tab:
 				return "Tab"
-			case .backspace:
-				return "Backspace"
-			case .deleteForward:
-				return "DeleteForward"
-			case .character(let character):
-				return "Character(\(character))"
-			}
+		}
 		}
 	}
 
-	private enum KeyIdentifier: Equatable {
-		case control(ControlKey)
-		case escape
-		case enter
-		case tab
-		case backspace
-		case deleteForward
-		case arrowUp
-		case arrowDown
-		case arrowLeft
-		case arrowRight
-		case shiftArrowLeft
-		case shiftArrowRight
-		case home
-		case end
-		case shiftHome
-		case shiftEnd
-		case pageUp
-		case pageDown
-		case function(number: Int)
+	private enum KeyPress {
+		case command(EditorCommand)
 		case character(Character)
-		case unknown(Int32)
-
-		init(rawValue key: Int32) {
-			if let control = ControlKey(rawValue: key) {
-				self = .control(control)
-				return
-			}
-			if let asciiControl = ASCIIControl(rawValue: key) {
-				self = asciiControl.toIdentifier()
-				return
-			}
-			switch key {
-			case Int32(KEY_ENTER):
-				self = .enter
-			case Int32(KEY_BACKSPACE):
-				self = .backspace
-			case Int32(KEY_DC):
-				self = .deleteForward
-			case Int32(KEY_UP):
-				self = .arrowUp
-			case Int32(KEY_DOWN):
-				self = .arrowDown
-			case Int32(KEY_LEFT):
-				self = .arrowLeft
-			case Int32(KEY_RIGHT):
-				self = .arrowRight
-			case Int32(KEY_SLEFT):
-				self = .shiftArrowLeft
-			case Int32(KEY_SRIGHT):
-				self = .shiftArrowRight
-			case Int32(KEY_HOME):
-				self = .home
-			case Int32(KEY_END):
-				self = .end
-			case Int32(KEY_SHOME):
-				self = .shiftHome
-			case Int32(KEY_SEND):
-				self = .shiftEnd
-			case Int32(KEY_NPAGE):
-				self = .pageDown
-			case Int32(KEY_PPAGE):
-				self = .pageUp
-			default:
-				let functionBase = Int32(KEY_F0)
-				if key >= functionBase, key <= functionBase + 63 {
-					let index = Int(key - functionBase) + 1
-					self = .function(number: index)
-					return
-				}
-					if let printable = printableCharacter(for: key) {
-					self = .character(printable)
-				} else {
-					self = .unknown(key)
-				}
-			}
-		}
-
-		var displayName: String {
-			switch self {
-			case .control(let key):
-				return key.displayName
-			case .escape:
-				return "Escape"
-			case .enter:
-				return "Enter"
-			case .tab:
-				return "Tab"
-			case .backspace:
-				return "Backspace"
-			case .deleteForward:
-				return "Delete"
-			case .arrowUp:
-				return "ArrowUp"
-			case .arrowDown:
-				return "ArrowDown"
-			case .arrowLeft:
-				return "ArrowLeft"
-			case .arrowRight:
-				return "ArrowRight"
-			case .shiftArrowLeft:
-				return "Shift+ArrowLeft"
-			case .shiftArrowRight:
-				return "Shift+ArrowRight"
-			case .home:
-				return "Home"
-			case .end:
-				return "End"
-			case .shiftHome:
-				return "Shift+Home"
-			case .shiftEnd:
-				return "Shift+End"
-			case .pageUp:
-				return "PageUp"
-			case .pageDown:
-				return "PageDown"
-			case .function(let number):
-				return "F\(number)"
-			case .character(let character):
-				return "\(character)"
-			case .unknown(let value):
-				return "Unknown(\(value))"
-			}
-		}
 	}
 
-	private enum ControlKey: Int32 {
-		case ctrlQ = 17
-		case ctrlS = 19
-
-		var displayName: String {
-			switch self {
-			case .ctrlQ:
-				return "Ctrl+Q"
-			case .ctrlS:
-				return "Ctrl+S"
-			}
-		}
-	}
-
-	private enum ASCIIControl: Int32 {
-		case escape = 27
-		case tab = 9
-		case backspace = 8
-		case delete = 127
-		case lineFeed = 10
-		case carriageReturn = 13
-
-		func toIdentifier() -> KeyIdentifier {
-			switch self {
-			case .escape:
-				return .escape
-			case .tab:
-				return .tab
-			case .backspace, .delete:
-				return .backspace
-			case .lineFeed, .carriageReturn:
-				return .enter
-			}
-		}
-	}
 
 	struct LayoutMetrics {
 		var cols: Int32
@@ -640,38 +508,40 @@ public final class TextUserInterfaceApp {
 				break
 			}
 			
-			let viewRows = max(1, Int(layout.editorHeight))
-			let event = categorizeKey(key)
-			switch event {
-			case .command(let commandKey, let identifier, let raw):
-				let result = handleCommand(
-					commandKey,
-					identifier: identifier,
-					rawKey: raw,
-					asciiSummary: asciiSummary,
-					hexString: hexString,
-					viewRows: viewRows,
-					diagnosticHeight: &diagHeight,
-					running: &running
-				)
-				if result.shouldSkipPostProcessing {
+			if NamedKey.from(key) == .escape {
+				if handleEscapeSequence() {
 					continue
 				}
-				if let note = result.inspectorNote {
-					inspectorNote = note
+			}
+			let viewRows = max(1, Int(layout.editorHeight))
+			if let press = mapKeyPress(key) {
+				switch press {
+				case .command(let command):
+					let result = handleEditorCommand(
+						command,
+						asciiSummary: asciiSummary,
+						hexString: hexString,
+						viewRows: viewRows,
+						diagnosticHeight: &diagHeight,
+						running: &running
+					)
+					if result.shouldSkipPostProcessing {
+						continue
+					}
+					if let note = result.inspectorNote {
+						inspectorNote = note
+					}
+				case .character(let character):
+					if let note = handleCharacterInput(
+						character,
+						asciiSummary: asciiSummary,
+						hexString: hexString
+					) {
+						inspectorNote = note
+					}
 				}
-			case .text(let textKey, let identifier, let raw):
-				if let note = handleTextInput(
-					textKey,
-					identifier: identifier,
-					rawKey: raw,
-					asciiSummary: asciiSummary,
-					hexString: hexString
-				) {
-					inspectorNote = note
-				}
-			case .unhandled(let identifier, let raw):
-				logUnhandledKey(identifier: identifier, rawKey: raw, hexString: hexString, asciiSummary: asciiSummary)
+			} else {
+				logUnhandledKey(key: key, hexString: hexString, asciiSummary: asciiSummary)
 			}
 		if let note = inspectorNote {
 			recordKeyInspector(key: key, ascii: asciiSummary, note: note)
@@ -708,82 +578,87 @@ public final class TextUserInterfaceApp {
 		}
 	}
 	
-	private func categorizeKey(_ key: Int32) -> KeyEvent {
-		let identifier = KeyIdentifier(rawValue: key)
+	private func mapKeyPress(_ key: Int32) -> KeyPress? {
 		if keymap.quitKeys.contains(key) {
-			return .command(.quit, identifier, rawKey: key)
+			return .command(.quit)
 		}
 		if keymap.saveKeys.contains(key) {
-			return .command(.save, identifier, rawKey: key)
+			return .command(.save)
 		}
-		switch identifier {
-		case .escape:
-			return .command(.escape, identifier, rawKey: key)
-		case .enter:
-			return .text(.newline, identifier, rawKey: key)
-		case .tab:
-			return .text(.tab, identifier, rawKey: key)
-		case .backspace:
-			return .text(.backspace, identifier, rawKey: key)
-		case .deleteForward:
-			return .text(.deleteForward, identifier, rawKey: key)
-		case .arrowUp:
-			return .command(.cursorUp, identifier, rawKey: key)
-		case .arrowDown:
-			return .command(.cursorDown, identifier, rawKey: key)
-		case .arrowLeft:
-			return .command(.cursorLeft, identifier, rawKey: key)
-		case .arrowRight:
-			return .command(.cursorRight, identifier, rawKey: key)
-		case .shiftArrowLeft:
-			return .command(.selectLeft, identifier, rawKey: key)
-		case .shiftArrowRight:
-			return .command(.selectRight, identifier, rawKey: key)
-		case .home:
-			return .command(.moveToLineStart, identifier, rawKey: key)
-		case .end:
-			return .command(.moveToLineEnd, identifier, rawKey: key)
-		case .shiftHome:
-			return .command(.selectLineStart, identifier, rawKey: key)
-		case .shiftEnd:
-			return .command(.selectLineEnd, identifier, rawKey: key)
-		case .pageDown:
-			return .command(.pageDown, identifier, rawKey: key)
-		case .pageUp:
-			return .command(.pageUp, identifier, rawKey: key)
-		case .function(let number):
-			switch number {
+		if let named = NamedKey.from(key) {
+			switch named {
+			case .left:
+				return .command(.moveLeft)
+			case .right:
+				return .command(.moveRight)
+			case .up:
+				return .command(.moveUp)
+			case .down:
+				return .command(.moveDown)
+			case .home:
+				return .command(.moveLineStart)
+			case .end:
+				return .command(.moveLineEnd)
+			case .pageUp:
+				return .command(.pageUp)
+			case .pageDown:
+				return .command(.pageDown)
+			case .backspaceAscii, .backspaceCurses:
+				return .command(.deleteBackward)
+			case .deleteKey:
+				return .command(.deleteForward)
+			case .enterLF, .enterCR:
+				return .command(.newline)
+			case .tab:
+				return .command(.tab)
+			case .escape:
+				return .command(.cancel)
+			case .shiftLeft:
+				return .command(.selectLeft)
+			case .shiftRight:
+				return .command(.selectRight)
+			case .shiftHome:
+				return .command(.selectLineStart)
+			case .shiftEnd:
+				return .command(.selectLineEnd)
+			}
+		}
+		let functionBase = Int32(KEY_F0)
+		if key >= functionBase, key <= functionBase + 63 {
+			switch key - functionBase {
+			case 6:
+				return .command(.navigationBack)
 			case 7:
-				return .command(.navigationBack, identifier, rawKey: key)
-			case 8:
-				return .command(.navigationForward, identifier, rawKey: key)
+				return .command(.navigationForward)
 			default:
-				return .unhandled(identifier, rawKey: key)
+				break
 			}
-		case .character(let character):
-			switch character {
-			case "d", "D":
-				return .command(.toggleDiagnostics, identifier, rawKey: key)
-			case "p", "P":
-				return .command(.pasteClipboard, identifier, rawKey: key)
-			case "v", "V":
-				return .command(.toggleSelectionAnchor, identifier, rawKey: key)
-			case "x", "X":
-				return .command(.cutSelection, identifier, rawKey: key)
-			case "y", "Y":
-				return .command(.copySelection, identifier, rawKey: key)
-			default:
-				return .text(.character(character), identifier, rawKey: key)
-			}
-		case .control, .unknown:
-			return .unhandled(identifier, rawKey: key)
 		}
+		if let scalar = UnicodeScalar(Int(key)) {
+			if scalar.value >= 32 && scalar.value <= 126 {
+				let character = Character(scalar)
+				switch Character(character.uppercased()) {
+				case "D":
+					return .command(.toggleDiagnostics)
+				case "P":
+					return .command(.pasteClipboard)
+				case "V":
+					return .command(.toggleSelectionAnchor)
+				case "X":
+					return .command(.cutSelection)
+				case "Y":
+					return .command(.copySelection)
+				default:
+					return .character(character)
+				}
+			}
+		}
+		return nil
 	}
 
-	private func handleCommand(
-		_ command: CommandKey,
-		identifier: KeyIdentifier,
-		rawKey: Int32,
+
+	private func handleEditorCommand(
+		_ command: EditorCommand,
 		asciiSummary: String,
 		hexString: String,
 		viewRows: Int,
@@ -791,246 +666,242 @@ public final class TextUserInterfaceApp {
 		running: inout Bool
 	) -> CommandHandlingResult {
 		var note = command.defaultInspectorNote
-		let log: () -> Void = { [self] in
-			self.logCommand(
-				command,
-				identifier: identifier,
-				rawKey: rawKey,
-				hexString: hexString,
-				asciiSummary: asciiSummary
-			)
-		}
+		logCommand(command, hexString: hexString, asciiSummary: asciiSummary)
 		switch command {
 		case .quit:
-			log()
 			running = false
 		case .save:
-			log()
 			let saved = saveDocument()
 			notifySaveOutcome(success: saved)
-		case .escape:
-			if handleEscapeSequence() {
-				return .skip
-			}
-			log()
-		case .cursorUp:
-			log()
-			mutateBuffer { buffer in
-				buffer.moveCursor(dRow: -1, dCol: 0)
-				return nil
-			}
-		case .cursorDown:
-			log()
-			mutateBuffer { buffer in
-				buffer.moveCursor(dRow: 1, dCol: 0)
-				return nil
-			}
-		case .cursorLeft:
-			log()
+		case .cancel:
+			break
+		case .moveLeft:
 			mutateBuffer { buffer in
 				buffer.moveCursor(dRow: 0, dCol: -1)
 				return nil
 			}
-		case .cursorRight:
-			log()
+		case .moveRight:
 			mutateBuffer { buffer in
 				buffer.moveCursor(dRow: 0, dCol: 1)
 				return nil
 			}
+		case .moveUp:
+			mutateBuffer { buffer in
+				buffer.moveCursor(dRow: -1, dCol: 0)
+				return nil
+			}
+		case .moveDown:
+			mutateBuffer { buffer in
+				buffer.moveCursor(dRow: 1, dCol: 0)
+				return nil
+			}
 		case .selectLeft:
-			log()
 			mutateBuffer { buffer in
 				buffer.moveCursor(dRow: 0, dCol: -1, selecting: true)
 				return nil
 			}
 		case .selectRight:
-			log()
 			mutateBuffer { buffer in
 				buffer.moveCursor(dRow: 0, dCol: 1, selecting: true)
 				return nil
 			}
-		case .moveToLineStart:
-			log()
+		case .moveLineStart:
 			mutateBuffer { buffer in
 				buffer.moveToLineStart()
 				return nil
 			}
-		case .moveToLineEnd:
-			log()
+		case .moveLineEnd:
 			mutateBuffer { buffer in
 				buffer.moveToLineEnd()
 				return nil
 			}
 		case .selectLineStart:
-			log()
 			mutateBuffer { buffer in
 				buffer.moveToLineStart(selecting: true)
 				return nil
 			}
 		case .selectLineEnd:
-			log()
 			mutateBuffer { buffer in
 				buffer.moveToLineEnd(selecting: true)
 				return nil
 			}
 		case .pageDown:
-			log()
 			mutateBuffer { buffer in
 				buffer.pageScroll(page: +1, viewRows: viewRows)
 				return nil
 			}
 		case .pageUp:
-			log()
 			mutateBuffer { buffer in
 				buffer.pageScroll(page: -1, viewRows: viewRows)
 				return nil
 			}
+		case .deleteBackward:
+			var deleted = false
+			mutateBuffer { buffer in
+				deleted = buffer.deleteBackward()
+				return nil
+			}
+			if !deleted { note = nil }
+		case .deleteForward:
+			var deleted = false
+			mutateBuffer { buffer in
+				deleted = buffer.deleteForward()
+				return nil
+			}
+			if !deleted { note = nil }
 		case .toggleDiagnostics:
-			log()
 			diagnosticHeight = (diagnosticHeight == 0) ? 8 : 0
 		case .pasteClipboard:
-			log()
+			var feedback: String?
 			mutateBuffer { buffer in
-				guard !buffer.clipboard.isEmpty else { return "Clipboard empty" }
+				guard !buffer.clipboard.isEmpty else {
+					feedback = "Clipboard empty"
+					return "Clipboard empty"
+				}
 				buffer.pasteClipboard()
+				let message = "Pasted \(buffer.clipboard.count) chars"
+				feedback = message
 				notify(
 					title: "Clipboard Pasted",
 					message: summarize(buffer.clipboard),
 					kind: .success,
 					metadata: ["length": String(buffer.clipboard.count)]
 				)
-				return "Pasted \(buffer.clipboard.count) chars"
+				return message
 			}
+			if let feedback { note = feedback }
 		case .toggleSelectionAnchor:
-			log()
+			var feedback: String?
 			mutateBuffer { buffer in
 				if buffer.hasSelection {
+					feedback = "Selection cleared"
 					buffer.clearSelection()
-					return "Selection cleared"
+					return feedback
 				} else {
+					feedback = "Selection anchor set"
 					buffer.beginSelection()
-					return "Selection anchor set"
+					return feedback
 				}
 			}
+			if let feedback { note = feedback }
 		case .cutSelection:
-			log()
+			var feedback: String?
 			mutateBuffer { buffer in
-				guard let copied = buffer.copySelection(), !copied.isEmpty else { return "No selection to cut" }
+				guard let copied = buffer.copySelection(), !copied.isEmpty else {
+					feedback = "No selection to cut"
+					return feedback
+				}
 				_ = buffer.deleteSelection()
 				let preview = summarize(copied)
+				feedback = "Cut \(copied.count) chars"
 				notify(
 					title: "Selection Cut",
 					message: preview,
 					kind: .warning,
 					metadata: ["length": String(copied.count)]
 				)
-				return "Cut \(copied.count) chars"
+				return feedback
 			}
+			if let feedback { note = feedback }
 		case .copySelection:
-			log()
+			var feedback: String?
 			mutateBuffer { buffer in
-				guard let copied = buffer.copySelection(), !copied.isEmpty else { return "No selection to copy" }
+				guard let copied = buffer.copySelection(), !copied.isEmpty else {
+					feedback = "No selection to copy"
+					return feedback
+				}
 				let preview = summarize(copied)
+				feedback = "Copied \(copied.count) chars"
 				notify(
 					title: "Selection Copied",
 					message: preview,
 					kind: .info,
 					metadata: ["length": String(copied.count)]
 				)
-				return "Copied \(copied.count) chars"
+				return feedback
 			}
+			if let feedback { note = feedback }
 		case .navigationBack:
-			log()
 			note = navigateBack() ? command.defaultInspectorNote : nil
 		case .navigationForward:
-			log()
 			note = navigateForward() ? command.defaultInspectorNote : nil
-		}
-		return CommandHandlingResult(inspectorNote: note, shouldSkipPostProcessing: false)
-	}
-
-	private func handleTextInput(
-		_ input: TextInputKey,
-		identifier: KeyIdentifier,
-		rawKey: Int32,
-		asciiSummary: String,
-		hexString: String
-	) -> String? {
-		var note = input.defaultInspectorNote
-		let log: () -> Void = { [self] in
-			self.logTextInput(
-				input,
-				identifier: identifier,
-				rawKey: rawKey,
-				hexString: hexString,
-				asciiSummary: asciiSummary
-			)
-		}
-		switch input {
 		case .newline:
-			log()
 			mutateBuffer { buffer in
 				buffer.insertNewline()
 				return nil
 			}
 		case .tab:
-			log()
 			mutateBuffer { buffer in
 				buffer.insert("\t")
 				return nil
 			}
-		case .backspace:
-			log()
-			var deleted = false
-			mutateBuffer { buffer in
-				deleted = buffer.deleteBackward()
-				return nil
-			}
-			if !deleted {
-				note = nil
-			}
-		case .deleteForward:
-			log()
-			var deleted = false
-			mutateBuffer { buffer in
-				deleted = buffer.deleteForward()
-				return nil
-			}
-			if !deleted {
-				note = nil
-			}
-		case .character(let character):
-			log()
-			mutateBuffer { buffer in
-				buffer.insertCharacter(character)
-				return nil
+		}
+		return CommandHandlingResult(inspectorNote: note, shouldSkipPostProcessing: false)
+	}
+
+	private func handleCharacterInput(
+		_ character: Character,
+		asciiSummary: String,
+		hexString: String
+	) -> String? {
+		logCharacterInput(character, hexString: hexString, asciiSummary: asciiSummary)
+		mutateBuffer { buffer in
+			buffer.insertCharacter(character)
+			return nil
+		}
+		return "insert"
+	}
+
+	private func logCommand(_ command: EditorCommand, hexString: String, asciiSummary: String) {
+		logger.info("command \(command.logLabel) hex=\(hexString) ascii=\(asciiSummary)")
+	}
+
+	private func logCharacterInput(_ character: Character, hexString: String, asciiSummary: String) {
+		logger.info("text Character(\(character)) hex=\(hexString) ascii=\(asciiSummary)")
+	}
+
+	private func logUnhandledKey(key: Int32, hexString: String, asciiSummary: String) {
+		logger.info("unhandled key \(displayName(for: key)) hex=\(hexString) raw=\(key) ascii=\(asciiSummary)")
+	}
+
+	private func displayName(for key: Int32) -> String {
+		if let named = NamedKey.from(key) {
+			switch named {
+			case .left: return "KEY_LEFT"
+			case .right: return "KEY_RIGHT"
+			case .up: return "KEY_UP"
+			case .down: return "KEY_DOWN"
+			case .home: return "KEY_HOME"
+			case .end: return "KEY_END"
+			case .pageUp: return "KEY_PPAGE"
+			case .pageDown: return "KEY_NPAGE"
+			case .backspaceAscii: return "DEL"
+			case .backspaceCurses: return "KEY_BACKSPACE"
+			case .enterLF: return "LF"
+			case .enterCR: return "CR"
+			case .tab: return "TAB"
+			case .escape: return "ESC"
+			case .deleteKey: return "KEY_DC"
+			case .shiftLeft: return "KEY_SLEFT"
+			case .shiftRight: return "KEY_SRIGHT"
+			case .shiftHome: return "KEY_SHOME"
+			case .shiftEnd: return "KEY_SEND"
 			}
 		}
-		return note
-	}
-
-	private func logCommand(
-		_ command: CommandKey,
-		identifier: KeyIdentifier,
-		rawKey: Int32,
-		hexString: String,
-		asciiSummary: String
-	) {
-		logger.info("command \(command.logLabel) via \(identifier.displayName) hex=\(hexString) raw=\(rawKey) ascii=\(asciiSummary)")
-	}
-
-	private func logTextInput(
-		_ input: TextInputKey,
-		identifier: KeyIdentifier,
-		rawKey: Int32,
-		hexString: String,
-		asciiSummary: String
-	) {
-		logger.info("text \(input.logLabel) via \(identifier.displayName) hex=\(hexString) raw=\(rawKey) ascii=\(asciiSummary)")
-	}
-
-	private func logUnhandledKey(identifier: KeyIdentifier, rawKey: Int32, hexString: String, asciiSummary: String) {
-		logger.info("unhandled key \(identifier.displayName) hex=\(hexString) raw=\(rawKey) ascii=\(asciiSummary)")
+		let functionBase = Int32(KEY_F0)
+		if key >= functionBase, key <= functionBase + 63 {
+			let index = Int(key - functionBase) + 1
+			return "F\(index)"
+		}
+		if key >= 1 && key <= 26 {
+			if let scalar = UnicodeScalar(Int(key + 64)) {
+				return "Ctrl+\(Character(scalar))"
+			}
+		}
+		if let scalar = UnicodeScalar(Int(key)), scalar.value >= 32, scalar.value <= 126 {
+			return String(Character(scalar))
+		}
+		return "Unknown(\(key))"
 	}
 
 	private func mutateBuffer(_ body: (inout EditorBuffer) -> String?) {
@@ -1921,13 +1792,14 @@ extension TextUserInterfaceApp {
 	}
 
 	func _debugCategorizeKey(_ key: Int32) -> DebugKeyEvent {
-		switch categorizeKey(key) {
-		case .command(let command, let identifier, _):
-			return DebugKeyEvent(kind: .command, identifier: identifier.displayName, payload: command.logLabel)
-		case .text(let text, let identifier, _):
-			return DebugKeyEvent(kind: .text, identifier: identifier.displayName, payload: text.logLabel)
-		case .unhandled(let identifier, _):
-			return DebugKeyEvent(kind: .unhandled, identifier: identifier.displayName, payload: nil)
+		guard let press = mapKeyPress(key) else {
+			return DebugKeyEvent(kind: .unhandled, identifier: displayName(for: key), payload: nil)
+		}
+		switch press {
+		case .command(let command):
+			return DebugKeyEvent(kind: .command, identifier: displayName(for: key), payload: command.logLabel)
+		case .character(let character):
+			return DebugKeyEvent(kind: .text, identifier: String(character), payload: "Character(\(character))")
 		}
 	}
 
@@ -1937,32 +1809,35 @@ extension TextUserInterfaceApp {
 		var inspectorNote: String?
 		let asciiSummary = asciiLabel(for: key)
 		let hexString = String(format: "%08X", key)
-		switch categorizeKey(key) {
-		case .command(let command, let identifier, let raw):
-			let result = handleCommand(
-				command,
-				identifier: identifier,
-				rawKey: raw,
-				asciiSummary: asciiSummary,
-				hexString: hexString,
-				viewRows: viewRows,
-				diagnosticHeight: &diagnostics,
-				running: &isRunning
-			)
-			if result.shouldSkipPostProcessing {
+		if NamedKey.from(key) == .escape {
+			if handleEscapeSequence() {
 				return DebugKeyDispatchResult(inspectorNote: nil, diagnosticHeight: diagnostics, running: isRunning, skipped: true)
 			}
-			inspectorNote = result.inspectorNote
-		case .text(let text, let identifier, let raw):
-			inspectorNote = handleTextInput(
-				text,
-				identifier: identifier,
-				rawKey: raw,
-				asciiSummary: asciiSummary,
-				hexString: hexString
-			)
-		case .unhandled(let identifier, let raw):
-			logUnhandledKey(identifier: identifier, rawKey: raw, hexString: hexString, asciiSummary: asciiSummary)
+		}
+		if let press = mapKeyPress(key) {
+			switch press {
+			case .command(let command):
+				let result = handleEditorCommand(
+					command,
+					asciiSummary: asciiSummary,
+					hexString: hexString,
+					viewRows: viewRows,
+					diagnosticHeight: &diagnostics,
+					running: &isRunning
+				)
+				if result.shouldSkipPostProcessing {
+					return DebugKeyDispatchResult(inspectorNote: nil, diagnosticHeight: diagnostics, running: isRunning, skipped: true)
+				}
+				inspectorNote = result.inspectorNote
+			case .character(let character):
+				inspectorNote = handleCharacterInput(
+					character,
+					asciiSummary: asciiSummary,
+					hexString: hexString
+				)
+			}
+		} else {
+			logUnhandledKey(key: key, hexString: hexString, asciiSummary: asciiSummary)
 		}
 		return DebugKeyDispatchResult(inspectorNote: inspectorNote, diagnosticHeight: diagnostics, running: isRunning, skipped: false)
 	}
