@@ -132,6 +132,45 @@ final class TextUserInterfaceAppTests: XCTestCase {
 		}
 	}
 
+	func testCategorizeKeyDistinguishesCommandTextAndUnhandled() throws {
+		try runOnMainActor(description: #function) {
+			let app = TextUserInterfaceApp()
+			let saveEvent = app._debugCategorizeKey(19) // Ctrl+S
+			XCTAssertEqual(saveEvent.kind, .command)
+			XCTAssertEqual(saveEvent.identifier, "Ctrl+S")
+			XCTAssertEqual(saveEvent.payload, "Save")
+			let charKey = Int32(Character("a").asciiValue!)
+			let textEvent = app._debugCategorizeKey(charKey)
+			XCTAssertEqual(textEvent.kind, .text)
+			XCTAssertEqual(textEvent.identifier, "a")
+			XCTAssertEqual(textEvent.payload, "Character(a)")
+			let unhandledEvent = app._debugCategorizeKey(0)
+			XCTAssertEqual(unhandledEvent.kind, .unhandled)
+			XCTAssertEqual(unhandledEvent.identifier, "Unknown(0)")
+			XCTAssertNil(unhandledEvent.payload)
+		}
+	}
+
+	func testProcessKeyUsesCommandAndTextHandlers() throws {
+		try runOnMainActor(description: #function) {
+			let app = TextUserInterfaceAppTests.makeApp(lines: ["foo"], cursorRow: 0, cursorCol: 0)
+			let toggleDiagnostics = app._debugProcessKey(Int32(Character("d").asciiValue!))
+			XCTAssertEqual(toggleDiagnostics.inspectorNote, "toggle diagnostics")
+			XCTAssertEqual(toggleDiagnostics.diagnosticHeight, 0)
+			XCTAssertTrue(toggleDiagnostics.running)
+			XCTAssertFalse(toggleDiagnostics.skipped)
+			let insertResult = app._debugProcessKey(Int32(Character("A").asciiValue!))
+			XCTAssertEqual(insertResult.inspectorNote, "insert")
+			let buffer = try XCTUnwrap(app._debugBuffer())
+			XCTAssertEqual(buffer.lines.first, "Afoo")
+			let quitApp = TextUserInterfaceAppTests.makeApp(lines: ["foo"], cursorRow: 0, cursorCol: 0)
+			let quitResult = quitApp._debugProcessKey(17) // Ctrl+Q
+			XCTAssertEqual(quitResult.inspectorNote, "quit")
+			XCTAssertFalse(quitResult.running)
+			XCTAssertFalse(quitResult.skipped)
+		}
+	}
+
 	func testHandleEscapeSequenceDelegatesToMetaWord() throws {
 		try runOnMainActor(description: #function) {
 			let app = TextUserInterfaceAppTests.makeApp(lines: ["alpha beta"], cursorRow: 0, cursorCol: 5)

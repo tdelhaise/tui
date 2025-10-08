@@ -15,6 +15,13 @@ public enum TUIKeys : Int32 {
 		 MinusQKey = 123
 }
 
+private func printableCharacter(for key: Int32) -> Character? {
+	guard key >= 32, key < 127, let scalar = UnicodeScalar(Int(key)) else {
+		return nil
+	}
+	return Character(scalar)
+}
+
 @MainActor
 public final class TextUserInterfaceApp {
 	
@@ -53,6 +60,32 @@ public final class TextUserInterfaceApp {
 		var inspectorNote: String?
 	}
 
+	private struct CommandHandlingResult {
+		var inspectorNote: String?
+		var shouldSkipPostProcessing: Bool
+
+		static let skip: CommandHandlingResult = CommandHandlingResult(inspectorNote: nil, shouldSkipPostProcessing: true)
+	}
+
+	struct DebugKeyEvent {
+		enum Kind: Equatable {
+			case command
+			case text
+			case unhandled
+		}
+
+		var kind: Kind
+		var identifier: String
+		var payload: String?
+	}
+
+	struct DebugKeyDispatchResult {
+		var inspectorNote: String?
+		var diagnosticHeight: Int32
+		var running: Bool
+		var skipped: Bool
+	}
+
 	private enum InputMode {
 		case normal
 		case search(SearchModeState)
@@ -68,6 +101,197 @@ public final class TextUserInterfaceApp {
 		case unhandled
 		case handled(inspectorNote: String?)
 	}
+
+	private enum NamedKey {
+		case left
+		case right
+		case up
+		case down
+		case home
+		case end
+		case pageUp
+		case pageDown
+		case backspaceAscii
+		case backspaceCurses
+		case enterLF
+		case enterCR
+		case tab
+		case escape
+		case deleteKey
+		case shiftLeft
+		case shiftRight
+		case shiftHome
+		case shiftEnd
+
+		static func from(_ key: Int32) -> NamedKey? {
+			switch key {
+			case KEY_LEFT: return .left
+			case KEY_RIGHT: return .right
+			case KEY_UP: return .up
+			case KEY_DOWN: return .down
+			case KEY_HOME: return .home
+			case KEY_END: return .end
+			case KEY_PPAGE: return .pageUp
+			case KEY_NPAGE: return .pageDown
+			case 127: return .backspaceAscii
+			case KEY_BACKSPACE: return .backspaceCurses
+			case 10: return .enterLF
+			case 13: return .enterCR
+			case 9: return .tab
+			case 27: return .escape
+			case KEY_DC: return .deleteKey
+			case KEY_SLEFT: return .shiftLeft
+			case KEY_SRIGHT: return .shiftRight
+			case KEY_SHOME: return .shiftHome
+			case KEY_SEND: return .shiftEnd
+			default:
+				return nil
+			}
+		}
+	}
+
+	private enum EditorCommand {
+		case quit
+		case save
+		case moveLeft
+		case moveRight
+		case moveUp
+		case moveDown
+		case selectLeft
+		case selectRight
+		case moveLineStart
+		case moveLineEnd
+		case selectLineStart
+		case selectLineEnd
+		case pageDown
+		case pageUp
+		case deleteBackward
+		case deleteForward
+		case toggleDiagnostics
+		case pasteClipboard
+		case toggleSelectionAnchor
+		case cutSelection
+		case copySelection
+		case navigationBack
+		case navigationForward
+		case newline
+		case tab
+		case cancel
+
+		var defaultInspectorNote: String? {
+			switch self {
+			case .quit:
+				return "quit"
+			case .save:
+				return "save"
+			case .cancel:
+				return "escape"
+			case .moveUp:
+				return "cursor up"
+			case .moveDown, .moveLeft, .moveRight:
+				return nil
+			case .selectLeft:
+				return "select left"
+			case .selectRight:
+				return "select right"
+			case .moveLineStart, .moveLineEnd:
+				return nil
+			case .selectLineStart:
+				return "select line start"
+			case .selectLineEnd:
+				return "select line end"
+			case .pageDown:
+				return "page down"
+			case .pageUp:
+				return "page up"
+			case .deleteBackward:
+				return "delete back"
+			case .deleteForward:
+				return "delete forward"
+			case .toggleDiagnostics:
+				return "toggle diagnostics"
+			case .pasteClipboard:
+				return "paste clipboard"
+			case .toggleSelectionAnchor:
+				return "toggle selection anchor"
+			case .cutSelection:
+				return "cut selection"
+			case .copySelection:
+				return "copy selection"
+			case .navigationBack:
+				return "nav back"
+			case .navigationForward:
+				return "nav forward"
+			case .newline:
+				return "newline"
+			case .tab:
+				return "tab"
+		}
+		}
+
+		var logLabel: String {
+			switch self {
+			case .quit:
+				return "Quit"
+			case .save:
+				return "Save"
+			case .cancel:
+				return "Escape"
+			case .moveLeft:
+				return "MoveLeft"
+			case .moveRight:
+				return "MoveRight"
+			case .moveUp:
+				return "MoveUp"
+			case .moveDown:
+				return "MoveDown"
+			case .selectLeft:
+				return "SelectLeft"
+			case .selectRight:
+				return "SelectRight"
+			case .moveLineStart:
+				return "MoveLineStart"
+			case .moveLineEnd:
+				return "MoveLineEnd"
+			case .selectLineStart:
+				return "SelectLineStart"
+			case .selectLineEnd:
+				return "SelectLineEnd"
+			case .pageDown:
+				return "PageDown"
+			case .pageUp:
+				return "PageUp"
+			case .deleteBackward:
+				return "DeleteBackward"
+			case .deleteForward:
+				return "DeleteForward"
+			case .toggleDiagnostics:
+				return "ToggleDiagnostics"
+			case .pasteClipboard:
+				return "PasteClipboard"
+			case .toggleSelectionAnchor:
+				return "ToggleSelectionAnchor"
+			case .cutSelection:
+				return "CutSelection"
+			case .copySelection:
+				return "CopySelection"
+			case .navigationBack:
+				return "NavigationBack"
+			case .navigationForward:
+				return "NavigationForward"
+			case .newline:
+				return "Newline"
+			case .tab:
+				return "Tab"
+		}
+		}
+	}
+
+	private enum KeyPress {
+		case command(EditorCommand)
+		case character(Character)
+	}
+
 
 	struct LayoutMetrics {
 		var cols: Int32
@@ -284,204 +508,40 @@ public final class TextUserInterfaceApp {
 				break
 			}
 			
-			let viewRows = max(1, Int(layout.editorHeight))
-			switch key {
-			case let value where keymap.quitKeys.contains(value):
-				logger.info("key: \(hexString) aka \(key) -> quit hotkey")
-				inspectorNote = "quit"
-				running = false
-			case let value where keymap.saveKeys.contains(value):
-				logger.info("key: \(hexString) aka \(key) -> save hotkey")
-				inspectorNote = "save"
-				let saved = saveDocument()
-				notifySaveOutcome(success: saved)
-			case KEY_ENTER, 10, 13:
-				logger.info("key: \(hexString) aka \(key) aka ENTER")
-				inspectorNote = "newline"
-				mutateBuffer { buffer in
-					buffer.insertNewline()
-					return nil
-				}
-			case KEY_BACKSPACE, 127, 8:
-				logger.info("key: \(hexString) aka \(key) aka BACKSPACE")
-				inspectorNote = "delete back"
-				var deleted = false
-				mutateBuffer { buffer in
-					deleted = buffer.deleteBackward()
-					return nil
-				}
-				if !deleted {
-					inspectorNote = nil
-				}
-			case 27:
+			if NamedKey.from(key) == .escape {
 				if handleEscapeSequence() {
 					continue
 				}
-				logger.info("key: \(hexString) aka \(key)")
-				inspectorNote = "escape"
-			case KEY_UP:
-				logger.info("key: \(hexString) aka \(key) aka KEY_UP")
-				inspectorNote = "cursor up"
-				mutateBuffer { buffer in
-					buffer.moveCursor(dRow: -1, dCol: 0)
-					return nil
-				}
-			case KEY_DOWN:
-				logger.info("key: \(hexString) aka \(key) aka KEY_DOWN")
-				mutateBuffer { buffer in
-					buffer.moveCursor(dRow: 1, dCol: 0)
-					return nil
-				}
-			case KEY_LEFT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_LEFT")
-				mutateBuffer { buffer in
-					buffer.moveCursor(dRow: 0, dCol: -1)
-					return nil
-				}
-			case KEY_RIGHT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_RIGHT")
-				mutateBuffer { buffer in
-					buffer.moveCursor(dRow: 0, dCol: 1)
-					return nil
-				}
-			case KEY_SLEFT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SLEFT")
-				inspectorNote = "select left"
-				mutateBuffer { buffer in
-					buffer.moveCursor(dRow: 0, dCol: -1, selecting: true)
-					return nil
-				}
-			case KEY_SRIGHT:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SRIGHT")
-				inspectorNote = "select right"
-				mutateBuffer { buffer in
-					buffer.moveCursor(dRow: 0, dCol: 1, selecting: true)
-					return nil
-				}
-			case KEY_HOME:
-				logger.info("key: \(hexString) aka \(key) aka KEY_HOME")
-				mutateBuffer { buffer in
-					buffer.moveToLineStart()
-					return nil
-				}
-			case KEY_END:
-				logger.info("key: \(hexString) aka \(key) aka KEY_END")
-				mutateBuffer { buffer in
-					buffer.moveToLineEnd()
-					return nil
-				}
-			case KEY_SHOME:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SHOME")
-				inspectorNote = "select line start"
-				mutateBuffer { buffer in
-					buffer.moveToLineStart(selecting: true)
-					return nil
-				}
-			case KEY_SEND:
-				logger.info("key: \(hexString) aka \(key) aka KEY_SEND")
-				inspectorNote = "select line end"
-				mutateBuffer { buffer in
-					buffer.moveToLineEnd(selecting: true)
-					return nil
-				}
-			case KEY_NPAGE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_NPAGE")
-				inspectorNote = "page down"
-				mutateBuffer { buffer in
-					buffer.pageScroll(page: +1, viewRows: viewRows)
-					return nil
-				}
-			case KEY_PPAGE:
-				logger.info("key: \(hexString) aka \(key) aka KEY_PPAGE")
-				inspectorNote = "page up"
-				mutateBuffer { buffer in
-					buffer.pageScroll(page: -1, viewRows: viewRows)
-					return nil
-				}
-			case KEY_DC:
-				logger.info("key: \(hexString) aka \(key) aka KEY_DC")
-				inspectorNote = "delete forward"
-				var deleted = false
-				mutateBuffer { buffer in
-					deleted = buffer.deleteForward()
-					return nil
-				}
-				if !deleted {
-					inspectorNote = nil
-				}
-			case 100:
-				logger.info("key: \(hexString) aka \(key) aka ???")
-				inspectorNote = "toggle diagnostics"
-				diagHeight = (diagHeight == 0) ? 8 : 0
-			case 112, 80:
-				logger.info("key: \(hexString) aka \(key) aka 112,80")
-				inspectorNote = "paste clipboard"
-				mutateBuffer { buffer in
-					guard !buffer.clipboard.isEmpty else { return "Clipboard empty" }
-					buffer.pasteClipboard()
-					notify(title: "Clipboard Pasted", message: summarize(buffer.clipboard), kind: .success, metadata: ["length": String(buffer.clipboard.count)])
-					return "Pasted \\(buffer.clipboard.count) chars"
-				}
-			case 118, 86:
-				logger.info("key: \(hexString) aka \(key) aka 118,86")
-				inspectorNote = "toggle selection anchor"
-				mutateBuffer { buffer in
-					if buffer.hasSelection {
-						buffer.clearSelection()
-						return "Selection cleared"
-					} else {
-						buffer.beginSelection()
-						return "Selection anchor set"
+			}
+			let viewRows = max(1, Int(layout.editorHeight))
+			if let press = mapKeyPress(key) {
+				switch press {
+				case .command(let command):
+					let result = handleEditorCommand(
+						command,
+						asciiSummary: asciiSummary,
+						hexString: hexString,
+						viewRows: viewRows,
+						diagnosticHeight: &diagHeight,
+						running: &running
+					)
+					if result.shouldSkipPostProcessing {
+						continue
+					}
+					if let note = result.inspectorNote {
+						inspectorNote = note
+					}
+				case .character(let character):
+					if let note = handleCharacterInput(
+						character,
+						asciiSummary: asciiSummary,
+						hexString: hexString
+					) {
+						inspectorNote = note
 					}
 				}
-			case 120, 88:
-				logger.info("key: \(hexString) aka \(key) aka 120,88")
-				inspectorNote = "cut selection"
-				mutateBuffer { buffer in
-					guard let copied = buffer.copySelection(), !copied.isEmpty else { return "No selection to cut" }
-					_ = buffer.deleteSelection()
-					let preview = summarize(copied)
-					notify(title: "Selection Cut", message: preview, kind: .warning, metadata: ["length": String(copied.count)])
-					return "Cut \\(copied.count) chars"
-				}
-			case 121, 89:
-				logger.info("key: \(hexString) aka \(key) aka 121,89")
-				inspectorNote = "copy selection"
-				mutateBuffer { buffer in
-					guard let copied = buffer.copySelection(), !copied.isEmpty else { return "No selection to copy" }
-					let preview = summarize(copied)
-					notify(title: "Selection Copied", message: preview, kind: .info, metadata: ["length": String(copied.count)])
-					return "Copied \\(copied.count) chars"
-				}
-			case 9:
-				logger.info("key: \(hexString) aka \(key) aka TAB")
-				inspectorNote = "tab"
-				mutateBuffer { buffer in
-					buffer.insert("\t")
-					return nil
-				}
-			case let value where value >= 32 && value < 127:
-				if let scalar = UnicodeScalar(Int(value)) {
-					let character = Character(scalar)
-					logger.info("key: \(hexString) aka \(key) printable")
-					inspectorNote = "insert"
-					mutateBuffer { buffer in
-						buffer.insertCharacter(character)
-						return nil
-					}
-				}
-			case KEY_F0+6:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F7")
-				if navigateBack() {
-					inspectorNote = "nav back"
-				}
-			case KEY_F0+7:
-				logger.info("key: \(hexString) aka \(key) aka KEY_F8")
-				if navigateForward() {
-					inspectorNote = "nav forward"
-				}
-			default:
-				logger.info("default key: \(hexString) aka \(key)")
+			} else {
+				logUnhandledKey(key: key, hexString: hexString, asciiSummary: asciiSummary)
 			}
 		if let note = inspectorNote {
 			recordKeyInspector(key: key, ascii: asciiSummary, note: note)
@@ -518,6 +578,332 @@ public final class TextUserInterfaceApp {
 		}
 	}
 	
+	private func mapKeyPress(_ key: Int32) -> KeyPress? {
+		if keymap.quitKeys.contains(key) {
+			return .command(.quit)
+		}
+		if keymap.saveKeys.contains(key) {
+			return .command(.save)
+		}
+		if let named = NamedKey.from(key) {
+			switch named {
+			case .left:
+				return .command(.moveLeft)
+			case .right:
+				return .command(.moveRight)
+			case .up:
+				return .command(.moveUp)
+			case .down:
+				return .command(.moveDown)
+			case .home:
+				return .command(.moveLineStart)
+			case .end:
+				return .command(.moveLineEnd)
+			case .pageUp:
+				return .command(.pageUp)
+			case .pageDown:
+				return .command(.pageDown)
+			case .backspaceAscii, .backspaceCurses:
+				return .command(.deleteBackward)
+			case .deleteKey:
+				return .command(.deleteForward)
+			case .enterLF, .enterCR:
+				return .command(.newline)
+			case .tab:
+				return .command(.tab)
+			case .escape:
+				return .command(.cancel)
+			case .shiftLeft:
+				return .command(.selectLeft)
+			case .shiftRight:
+				return .command(.selectRight)
+			case .shiftHome:
+				return .command(.selectLineStart)
+			case .shiftEnd:
+				return .command(.selectLineEnd)
+			}
+		}
+		let functionBase = Int32(KEY_F0)
+		if key >= functionBase, key <= functionBase + 63 {
+			switch key - functionBase {
+			case 6:
+				return .command(.navigationBack)
+			case 7:
+				return .command(.navigationForward)
+			default:
+				break
+			}
+		}
+		if let scalar = UnicodeScalar(Int(key)) {
+			if scalar.value >= 32 && scalar.value <= 126 {
+				let character = Character(scalar)
+				switch Character(character.uppercased()) {
+				case "D":
+					return .command(.toggleDiagnostics)
+				case "P":
+					return .command(.pasteClipboard)
+				case "V":
+					return .command(.toggleSelectionAnchor)
+				case "X":
+					return .command(.cutSelection)
+				case "Y":
+					return .command(.copySelection)
+				default:
+					return .character(character)
+				}
+			}
+		}
+		return nil
+	}
+
+
+	private func handleEditorCommand(
+		_ command: EditorCommand,
+		asciiSummary: String,
+		hexString: String,
+		viewRows: Int,
+		diagnosticHeight: inout Int32,
+		running: inout Bool
+	) -> CommandHandlingResult {
+		var note = command.defaultInspectorNote
+		logCommand(command, hexString: hexString, asciiSummary: asciiSummary)
+		switch command {
+		case .quit:
+			running = false
+		case .save:
+			let saved = saveDocument()
+			notifySaveOutcome(success: saved)
+		case .cancel:
+			break
+		case .moveLeft:
+			mutateBuffer { buffer in
+				buffer.moveCursor(dRow: 0, dCol: -1)
+				return nil
+			}
+		case .moveRight:
+			mutateBuffer { buffer in
+				buffer.moveCursor(dRow: 0, dCol: 1)
+				return nil
+			}
+		case .moveUp:
+			mutateBuffer { buffer in
+				buffer.moveCursor(dRow: -1, dCol: 0)
+				return nil
+			}
+		case .moveDown:
+			mutateBuffer { buffer in
+				buffer.moveCursor(dRow: 1, dCol: 0)
+				return nil
+			}
+		case .selectLeft:
+			mutateBuffer { buffer in
+				buffer.moveCursor(dRow: 0, dCol: -1, selecting: true)
+				return nil
+			}
+		case .selectRight:
+			mutateBuffer { buffer in
+				buffer.moveCursor(dRow: 0, dCol: 1, selecting: true)
+				return nil
+			}
+		case .moveLineStart:
+			mutateBuffer { buffer in
+				buffer.moveToLineStart()
+				return nil
+			}
+		case .moveLineEnd:
+			mutateBuffer { buffer in
+				buffer.moveToLineEnd()
+				return nil
+			}
+		case .selectLineStart:
+			mutateBuffer { buffer in
+				buffer.moveToLineStart(selecting: true)
+				return nil
+			}
+		case .selectLineEnd:
+			mutateBuffer { buffer in
+				buffer.moveToLineEnd(selecting: true)
+				return nil
+			}
+		case .pageDown:
+			mutateBuffer { buffer in
+				buffer.pageScroll(page: +1, viewRows: viewRows)
+				return nil
+			}
+		case .pageUp:
+			mutateBuffer { buffer in
+				buffer.pageScroll(page: -1, viewRows: viewRows)
+				return nil
+			}
+		case .deleteBackward:
+			var deleted = false
+			mutateBuffer { buffer in
+				deleted = buffer.deleteBackward()
+				return nil
+			}
+			if !deleted { note = nil }
+		case .deleteForward:
+			var deleted = false
+			mutateBuffer { buffer in
+				deleted = buffer.deleteForward()
+				return nil
+			}
+			if !deleted { note = nil }
+		case .toggleDiagnostics:
+			diagnosticHeight = (diagnosticHeight == 0) ? 8 : 0
+		case .pasteClipboard:
+			var feedback: String?
+			mutateBuffer { buffer in
+				guard !buffer.clipboard.isEmpty else {
+					feedback = "Clipboard empty"
+					return "Clipboard empty"
+				}
+				buffer.pasteClipboard()
+				let message = "Pasted \(buffer.clipboard.count) chars"
+				feedback = message
+				notify(
+					title: "Clipboard Pasted",
+					message: summarize(buffer.clipboard),
+					kind: .success,
+					metadata: ["length": String(buffer.clipboard.count)]
+				)
+				return message
+			}
+			if let feedback { note = feedback }
+		case .toggleSelectionAnchor:
+			var feedback: String?
+			mutateBuffer { buffer in
+				if buffer.hasSelection {
+					feedback = "Selection cleared"
+					buffer.clearSelection()
+					return feedback
+				} else {
+					feedback = "Selection anchor set"
+					buffer.beginSelection()
+					return feedback
+				}
+			}
+			if let feedback { note = feedback }
+		case .cutSelection:
+			var feedback: String?
+			mutateBuffer { buffer in
+				guard let copied = buffer.copySelection(), !copied.isEmpty else {
+					feedback = "No selection to cut"
+					return feedback
+				}
+				_ = buffer.deleteSelection()
+				let preview = summarize(copied)
+				feedback = "Cut \(copied.count) chars"
+				notify(
+					title: "Selection Cut",
+					message: preview,
+					kind: .warning,
+					metadata: ["length": String(copied.count)]
+				)
+				return feedback
+			}
+			if let feedback { note = feedback }
+		case .copySelection:
+			var feedback: String?
+			mutateBuffer { buffer in
+				guard let copied = buffer.copySelection(), !copied.isEmpty else {
+					feedback = "No selection to copy"
+					return feedback
+				}
+				let preview = summarize(copied)
+				feedback = "Copied \(copied.count) chars"
+				notify(
+					title: "Selection Copied",
+					message: preview,
+					kind: .info,
+					metadata: ["length": String(copied.count)]
+				)
+				return feedback
+			}
+			if let feedback { note = feedback }
+		case .navigationBack:
+			note = navigateBack() ? command.defaultInspectorNote : nil
+		case .navigationForward:
+			note = navigateForward() ? command.defaultInspectorNote : nil
+		case .newline:
+			mutateBuffer { buffer in
+				buffer.insertNewline()
+				return nil
+			}
+		case .tab:
+			mutateBuffer { buffer in
+				buffer.insert("\t")
+				return nil
+			}
+		}
+		return CommandHandlingResult(inspectorNote: note, shouldSkipPostProcessing: false)
+	}
+
+	private func handleCharacterInput(
+		_ character: Character,
+		asciiSummary: String,
+		hexString: String
+	) -> String? {
+		logCharacterInput(character, hexString: hexString, asciiSummary: asciiSummary)
+		mutateBuffer { buffer in
+			buffer.insertCharacter(character)
+			return nil
+		}
+		return "insert"
+	}
+
+	private func logCommand(_ command: EditorCommand, hexString: String, asciiSummary: String) {
+		logger.info("command \(command.logLabel) hex=\(hexString) ascii=\(asciiSummary)")
+	}
+
+	private func logCharacterInput(_ character: Character, hexString: String, asciiSummary: String) {
+		logger.info("text Character(\(character)) hex=\(hexString) ascii=\(asciiSummary)")
+	}
+
+	private func logUnhandledKey(key: Int32, hexString: String, asciiSummary: String) {
+		logger.info("unhandled key \(displayName(for: key)) hex=\(hexString) raw=\(key) ascii=\(asciiSummary)")
+	}
+
+	private func displayName(for key: Int32) -> String {
+		if let named = NamedKey.from(key) {
+			switch named {
+			case .left: return "KEY_LEFT"
+			case .right: return "KEY_RIGHT"
+			case .up: return "KEY_UP"
+			case .down: return "KEY_DOWN"
+			case .home: return "KEY_HOME"
+			case .end: return "KEY_END"
+			case .pageUp: return "KEY_PPAGE"
+			case .pageDown: return "KEY_NPAGE"
+			case .backspaceAscii: return "DEL"
+			case .backspaceCurses: return "KEY_BACKSPACE"
+			case .enterLF: return "LF"
+			case .enterCR: return "CR"
+			case .tab: return "TAB"
+			case .escape: return "ESC"
+			case .deleteKey: return "KEY_DC"
+			case .shiftLeft: return "KEY_SLEFT"
+			case .shiftRight: return "KEY_SRIGHT"
+			case .shiftHome: return "KEY_SHOME"
+			case .shiftEnd: return "KEY_SEND"
+			}
+		}
+		let functionBase = Int32(KEY_F0)
+		if key >= functionBase, key <= functionBase + 63 {
+			let index = Int(key - functionBase) + 1
+			return "F\(index)"
+		}
+		if key >= 1 && key <= 26 {
+			if let scalar = UnicodeScalar(Int(key + 64)) {
+				return "Ctrl+\(Character(scalar))"
+			}
+		}
+		if let scalar = UnicodeScalar(Int(key)), scalar.value >= 32, scalar.value <= 126 {
+			return String(Character(scalar))
+		}
+		return "Unknown(\(key))"
+	}
+
 	private func mutateBuffer(_ body: (inout EditorBuffer) -> String?) {
 		guard var buf = buffer else { return }
 		let previousLines = buf.lines
@@ -1403,6 +1789,57 @@ extension TextUserInterfaceApp {
 
 	func _debugInspectorNotes() -> [String] {
 		keyInspector.entries.map { "\($0.rawLabel)|\($0.note)" }
+	}
+
+	func _debugCategorizeKey(_ key: Int32) -> DebugKeyEvent {
+		guard let press = mapKeyPress(key) else {
+			return DebugKeyEvent(kind: .unhandled, identifier: displayName(for: key), payload: nil)
+		}
+		switch press {
+		case .command(let command):
+			return DebugKeyEvent(kind: .command, identifier: displayName(for: key), payload: command.logLabel)
+		case .character(let character):
+			return DebugKeyEvent(kind: .text, identifier: String(character), payload: "Character(\(character))")
+		}
+	}
+
+	func _debugProcessKey(_ key: Int32, viewRows: Int = 24, diagnosticHeight: Int32 = 8) -> DebugKeyDispatchResult {
+		var diagnostics = diagnosticHeight
+		var isRunning = true
+		var inspectorNote: String?
+		let asciiSummary = asciiLabel(for: key)
+		let hexString = String(format: "%08X", key)
+		if NamedKey.from(key) == .escape {
+			if handleEscapeSequence() {
+				return DebugKeyDispatchResult(inspectorNote: nil, diagnosticHeight: diagnostics, running: isRunning, skipped: true)
+			}
+		}
+		if let press = mapKeyPress(key) {
+			switch press {
+			case .command(let command):
+				let result = handleEditorCommand(
+					command,
+					asciiSummary: asciiSummary,
+					hexString: hexString,
+					viewRows: viewRows,
+					diagnosticHeight: &diagnostics,
+					running: &isRunning
+				)
+				if result.shouldSkipPostProcessing {
+					return DebugKeyDispatchResult(inspectorNote: nil, diagnosticHeight: diagnostics, running: isRunning, skipped: true)
+				}
+				inspectorNote = result.inspectorNote
+			case .character(let character):
+				inspectorNote = handleCharacterInput(
+					character,
+					asciiSummary: asciiSummary,
+					hexString: hexString
+				)
+			}
+		} else {
+			logUnhandledKey(key: key, hexString: hexString, asciiSummary: asciiSummary)
+		}
+		return DebugKeyDispatchResult(inspectorNote: inspectorNote, diagnosticHeight: diagnostics, running: isRunning, skipped: false)
 	}
 
 	func _debugHandleEscapeSequence(codes: [Int32]) -> Bool {
