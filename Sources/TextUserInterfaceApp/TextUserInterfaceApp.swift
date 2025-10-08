@@ -67,6 +67,25 @@ public final class TextUserInterfaceApp {
 		static let skip: CommandHandlingResult = CommandHandlingResult(inspectorNote: nil, shouldSkipPostProcessing: true)
 	}
 
+	struct DebugKeyEvent {
+		enum Kind: Equatable {
+			case command
+			case text
+			case unhandled
+		}
+
+		var kind: Kind
+		var identifier: String
+		var payload: String?
+	}
+
+	struct DebugKeyDispatchResult {
+		var inspectorNote: String?
+		var diagnosticHeight: Int32
+		var running: Bool
+		var skipped: Bool
+	}
+
 	private enum InputMode {
 		case normal
 		case search(SearchModeState)
@@ -1899,6 +1918,53 @@ extension TextUserInterfaceApp {
 
 	func _debugInspectorNotes() -> [String] {
 		keyInspector.entries.map { "\($0.rawLabel)|\($0.note)" }
+	}
+
+	func _debugCategorizeKey(_ key: Int32) -> DebugKeyEvent {
+		switch categorizeKey(key) {
+		case .command(let command, let identifier, _):
+			return DebugKeyEvent(kind: .command, identifier: identifier.displayName, payload: command.logLabel)
+		case .text(let text, let identifier, _):
+			return DebugKeyEvent(kind: .text, identifier: identifier.displayName, payload: text.logLabel)
+		case .unhandled(let identifier, _):
+			return DebugKeyEvent(kind: .unhandled, identifier: identifier.displayName, payload: nil)
+		}
+	}
+
+	func _debugProcessKey(_ key: Int32, viewRows: Int = 24, diagnosticHeight: Int32 = 8) -> DebugKeyDispatchResult {
+		var diagnostics = diagnosticHeight
+		var isRunning = true
+		var inspectorNote: String?
+		let asciiSummary = asciiLabel(for: key)
+		let hexString = String(format: "%08X", key)
+		switch categorizeKey(key) {
+		case .command(let command, let identifier, let raw):
+			let result = handleCommand(
+				command,
+				identifier: identifier,
+				rawKey: raw,
+				asciiSummary: asciiSummary,
+				hexString: hexString,
+				viewRows: viewRows,
+				diagnosticHeight: &diagnostics,
+				running: &isRunning
+			)
+			if result.shouldSkipPostProcessing {
+				return DebugKeyDispatchResult(inspectorNote: nil, diagnosticHeight: diagnostics, running: isRunning, skipped: true)
+			}
+			inspectorNote = result.inspectorNote
+		case .text(let text, let identifier, let raw):
+			inspectorNote = handleTextInput(
+				text,
+				identifier: identifier,
+				rawKey: raw,
+				asciiSummary: asciiSummary,
+				hexString: hexString
+			)
+		case .unhandled(let identifier, let raw):
+			logUnhandledKey(identifier: identifier, rawKey: raw, hexString: hexString, asciiSummary: asciiSummary)
+		}
+		return DebugKeyDispatchResult(inspectorNote: inspectorNote, diagnosticHeight: diagnostics, running: isRunning, skipped: false)
 	}
 
 	func _debugHandleEscapeSequence(codes: [Int32]) -> Bool {
