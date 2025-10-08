@@ -15,6 +15,13 @@ public enum TUIKeys : Int32 {
 		 MinusQKey = 123
 }
 
+private func printableCharacter(for key: Int32) -> Character? {
+	guard key >= 32, key < 127, let scalar = UnicodeScalar(Int(key)) else {
+		return nil
+	}
+	return Character(scalar)
+}
+
 @MainActor
 public final class TextUserInterfaceApp {
 	
@@ -105,183 +112,7 @@ public final class TextUserInterfaceApp {
 		case copySelection
 		case navigationBack
 		case navigationForward
-	}
 
-	private enum TextInputKey {
-		case newline
-		case tab
-		case backspace
-		case deleteForward
-		case character(Character)
-	}
-
-	private enum KeyIdentifier: Equatable {
-		case control(ControlKey)
-		case escape
-		case enter
-		case tab
-		case backspace
-		case deleteForward
-		case arrowUp
-		case arrowDown
-		case arrowLeft
-		case arrowRight
-		case shiftArrowLeft
-		case shiftArrowRight
-		case home
-		case end
-		case shiftHome
-		case shiftEnd
-		case pageUp
-		case pageDown
-		case function(number: Int)
-		case character(Character)
-		case unknown(Int32)
-
-		init(rawValue key: Int32) {
-			if let control = ControlKey(rawValue: key) {
-				self = .control(control)
-				return
-			}
-			if let asciiControl = ASCIIControl(rawValue: key) {
-				self = asciiControl.toIdentifier()
-				return
-			}
-			switch key {
-			case Int32(KEY_ENTER):
-				self = .enter
-			case Int32(KEY_BACKSPACE):
-				self = .backspace
-			case Int32(KEY_DC):
-				self = .deleteForward
-			case Int32(KEY_UP):
-				self = .arrowUp
-			case Int32(KEY_DOWN):
-				self = .arrowDown
-			case Int32(KEY_LEFT):
-				self = .arrowLeft
-			case Int32(KEY_RIGHT):
-				self = .arrowRight
-			case Int32(KEY_SLEFT):
-				self = .shiftArrowLeft
-			case Int32(KEY_SRIGHT):
-				self = .shiftArrowRight
-			case Int32(KEY_HOME):
-				self = .home
-			case Int32(KEY_END):
-				self = .end
-			case Int32(KEY_SHOME):
-				self = .shiftHome
-			case Int32(KEY_SEND):
-				self = .shiftEnd
-			case Int32(KEY_NPAGE):
-				self = .pageDown
-			case Int32(KEY_PPAGE):
-				self = .pageUp
-			default:
-				let functionBase = Int32(KEY_F0)
-				if key >= functionBase, key <= functionBase + 63 {
-					let index = Int(key - functionBase) + 1
-					self = .function(number: index)
-					return
-				}
-				if let printable = TextUserInterfaceApp.printableCharacter(for: key) {
-					self = .character(printable)
-				} else {
-					self = .unknown(key)
-				}
-			}
-		}
-	}
-
-	private enum ControlKey: Int32 {
-		case ctrlQ = 17
-		case ctrlS = 19
-	}
-
-	private enum ASCIIControl: Int32 {
-		case escape = 27
-		case tab = 9
-		case backspace = 8
-		case delete = 127
-		case lineFeed = 10
-		case carriageReturn = 13
-
-		func toIdentifier() -> KeyIdentifier {
-			switch self {
-			case .escape:
-				return .escape
-			case .tab:
-				return .tab
-			case .backspace, .delete:
-				return .backspace
-			case .lineFeed, .carriageReturn:
-				return .enter
-			}
-		}
-	}
-
-	private extension KeyIdentifier {
-		var displayName: String {
-			switch self {
-			case .control(let key):
-				return key.displayName
-			case .escape:
-				return "Escape"
-			case .enter:
-				return "Enter"
-			case .tab:
-				return "Tab"
-			case .backspace:
-				return "Backspace"
-			case .deleteForward:
-				return "Delete"
-			case .arrowUp:
-				return "ArrowUp"
-			case .arrowDown:
-				return "ArrowDown"
-			case .arrowLeft:
-				return "ArrowLeft"
-			case .arrowRight:
-				return "ArrowRight"
-			case .shiftArrowLeft:
-				return "Shift+ArrowLeft"
-			case .shiftArrowRight:
-				return "Shift+ArrowRight"
-			case .home:
-				return "Home"
-			case .end:
-				return "End"
-			case .shiftHome:
-				return "Shift+Home"
-			case .shiftEnd:
-				return "Shift+End"
-			case .pageUp:
-				return "PageUp"
-			case .pageDown:
-				return "PageDown"
-			case .function(let number):
-				return "F\(number)"
-			case .character(let character):
-				return "\(character)"
-			case .unknown(let value):
-				return "Unknown(\(value))"
-			}
-		}
-	}
-
-	private extension ControlKey {
-		var displayName: String {
-			switch self {
-			case .ctrlQ:
-				return "Ctrl+Q"
-			case .ctrlS:
-				return "Ctrl+S"
-			}
-		}
-	}
-
-	private extension CommandKey {
 		var defaultInspectorNote: String? {
 			switch self {
 			case .quit:
@@ -375,7 +206,13 @@ public final class TextUserInterfaceApp {
 		}
 	}
 
-	private extension TextInputKey {
+	private enum TextInputKey {
+		case newline
+		case tab
+		case backspace
+		case deleteForward
+		case character(Character)
+
 		var defaultInspectorNote: String? {
 			switch self {
 			case .newline:
@@ -403,6 +240,168 @@ public final class TextUserInterfaceApp {
 				return "DeleteForward"
 			case .character(let character):
 				return "Character(\(character))"
+			}
+		}
+	}
+
+	private enum KeyIdentifier: Equatable {
+		case control(ControlKey)
+		case escape
+		case enter
+		case tab
+		case backspace
+		case deleteForward
+		case arrowUp
+		case arrowDown
+		case arrowLeft
+		case arrowRight
+		case shiftArrowLeft
+		case shiftArrowRight
+		case home
+		case end
+		case shiftHome
+		case shiftEnd
+		case pageUp
+		case pageDown
+		case function(number: Int)
+		case character(Character)
+		case unknown(Int32)
+
+		init(rawValue key: Int32) {
+			if let control = ControlKey(rawValue: key) {
+				self = .control(control)
+				return
+			}
+			if let asciiControl = ASCIIControl(rawValue: key) {
+				self = asciiControl.toIdentifier()
+				return
+			}
+			switch key {
+			case Int32(KEY_ENTER):
+				self = .enter
+			case Int32(KEY_BACKSPACE):
+				self = .backspace
+			case Int32(KEY_DC):
+				self = .deleteForward
+			case Int32(KEY_UP):
+				self = .arrowUp
+			case Int32(KEY_DOWN):
+				self = .arrowDown
+			case Int32(KEY_LEFT):
+				self = .arrowLeft
+			case Int32(KEY_RIGHT):
+				self = .arrowRight
+			case Int32(KEY_SLEFT):
+				self = .shiftArrowLeft
+			case Int32(KEY_SRIGHT):
+				self = .shiftArrowRight
+			case Int32(KEY_HOME):
+				self = .home
+			case Int32(KEY_END):
+				self = .end
+			case Int32(KEY_SHOME):
+				self = .shiftHome
+			case Int32(KEY_SEND):
+				self = .shiftEnd
+			case Int32(KEY_NPAGE):
+				self = .pageDown
+			case Int32(KEY_PPAGE):
+				self = .pageUp
+			default:
+				let functionBase = Int32(KEY_F0)
+				if key >= functionBase, key <= functionBase + 63 {
+					let index = Int(key - functionBase) + 1
+					self = .function(number: index)
+					return
+				}
+					if let printable = printableCharacter(for: key) {
+					self = .character(printable)
+				} else {
+					self = .unknown(key)
+				}
+			}
+		}
+
+		var displayName: String {
+			switch self {
+			case .control(let key):
+				return key.displayName
+			case .escape:
+				return "Escape"
+			case .enter:
+				return "Enter"
+			case .tab:
+				return "Tab"
+			case .backspace:
+				return "Backspace"
+			case .deleteForward:
+				return "Delete"
+			case .arrowUp:
+				return "ArrowUp"
+			case .arrowDown:
+				return "ArrowDown"
+			case .arrowLeft:
+				return "ArrowLeft"
+			case .arrowRight:
+				return "ArrowRight"
+			case .shiftArrowLeft:
+				return "Shift+ArrowLeft"
+			case .shiftArrowRight:
+				return "Shift+ArrowRight"
+			case .home:
+				return "Home"
+			case .end:
+				return "End"
+			case .shiftHome:
+				return "Shift+Home"
+			case .shiftEnd:
+				return "Shift+End"
+			case .pageUp:
+				return "PageUp"
+			case .pageDown:
+				return "PageDown"
+			case .function(let number):
+				return "F\(number)"
+			case .character(let character):
+				return "\(character)"
+			case .unknown(let value):
+				return "Unknown(\(value))"
+			}
+		}
+	}
+
+	private enum ControlKey: Int32 {
+		case ctrlQ = 17
+		case ctrlS = 19
+
+		var displayName: String {
+			switch self {
+			case .ctrlQ:
+				return "Ctrl+Q"
+			case .ctrlS:
+				return "Ctrl+S"
+			}
+		}
+	}
+
+	private enum ASCIIControl: Int32 {
+		case escape = 27
+		case tab = 9
+		case backspace = 8
+		case delete = 127
+		case lineFeed = 10
+		case carriageReturn = 13
+
+		func toIdentifier() -> KeyIdentifier {
+			switch self {
+			case .escape:
+				return .escape
+			case .tab:
+				return .tab
+			case .backspace, .delete:
+				return .backspace
+			case .lineFeed, .carriageReturn:
+				return .enter
 			}
 		}
 	}
@@ -773,8 +772,8 @@ public final class TextUserInterfaceApp {
 		running: inout Bool
 	) -> CommandHandlingResult {
 		var note = command.defaultInspectorNote
-		let log = {
-			logCommand(
+		let log: () -> Void = { [self] in
+			self.logCommand(
 				command,
 				identifier: identifier,
 				rawKey: rawKey,
@@ -939,8 +938,8 @@ public final class TextUserInterfaceApp {
 		hexString: String
 	) -> String? {
 		var note = input.defaultInspectorNote
-		let log = {
-			logTextInput(
+		let log: () -> Void = { [self] in
+			self.logTextInput(
 				input,
 				identifier: identifier,
 				rawKey: rawKey,
@@ -1013,13 +1012,6 @@ public final class TextUserInterfaceApp {
 
 	private func logUnhandledKey(identifier: KeyIdentifier, rawKey: Int32, hexString: String, asciiSummary: String) {
 		logger.info("unhandled key \(identifier.displayName) hex=\(hexString) raw=\(rawKey) ascii=\(asciiSummary)")
-	}
-
-	private static func printableCharacter(for key: Int32) -> Character? {
-		guard key >= 32, key < 127, let scalar = UnicodeScalar(Int(key)) else {
-			return nil
-		}
-		return Character(scalar)
 	}
 
 	private func mutateBuffer(_ body: (inout EditorBuffer) -> String?) {
