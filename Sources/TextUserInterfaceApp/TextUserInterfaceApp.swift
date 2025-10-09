@@ -488,24 +488,24 @@ public final class TextUserInterfaceApp {
 			let asciiSummary = asciiLabel(for: key)
 			var inspectorNote: String? = nil
 			switch handleSearchInput(key: key, ascii: asciiSummary) {
-			case .handled(let note):
-				if let note { inspectorNote = note }
-				if let noteToRecord = inspectorNote ?? note {
-					recordKeyInspector(key: key, ascii: asciiSummary, note: noteToRecord)
-				}
-				continue
-			case .unhandled:
-				break
+				case .handled(let note):
+					if let note { inspectorNote = note }
+					if let noteToRecord = inspectorNote ?? note {
+						recordKeyInspector(key: key, ascii: asciiSummary, note: noteToRecord)
+					}
+					continue
+				case .unhandled:
+					break
 			}
 			switch handleCommandPaletteInput(key: key, ascii: asciiSummary) {
-			case .handled(let note):
-				if let note { inspectorNote = note }
-				if let noteToRecord = inspectorNote ?? note {
-					recordKeyInspector(key: key, ascii: asciiSummary, note: noteToRecord)
-				}
-				continue
-			case .unhandled:
-				break
+				case .handled(let note):
+					if let note { inspectorNote = note }
+					if let noteToRecord = inspectorNote ?? note {
+						recordKeyInspector(key: key, ascii: asciiSummary, note: noteToRecord)
+					}
+					continue
+				case .unhandled:
+					break
 			}
 			
 			if NamedKey.from(key) == .escape {
